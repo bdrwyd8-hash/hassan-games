@@ -1,0 +1,6 @@
+{
+  "name": "Hassan Games",
+  "description": "مساحة ألعاب احترافية ومسرع ألعاب للأجهزة الضعيفة بأسلوب ريد ماجيك مع تنظيف الرام بالخلفية وتخصيص أزرار الصوت كأزرار كتف L1/R1 ومؤشر تصويب عائم",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
