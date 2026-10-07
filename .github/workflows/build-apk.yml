@@ -23,7 +23,9 @@ jobs:
 
       - name: Ensure debug.keystore exists
         run: |
-          if [ ! -f debug.keystore ]; then
+          if [ -f debug.keystore.base64 ]; then
+            base64 -d debug.keystore.base64 > debug.keystore
+          elif [ ! -f debug.keystore ]; then
             keytool -genkey -v -keystore debug.keystore -storepass android -alias androiddebugkey -keypass android -keyalg RSA -keysize 2048 -validity 10000 -dname "CN=Android Debug,O=Android,C=US"
           fi
 
@@ -36,20 +38,35 @@ jobs:
         run: gradle assembleDebug
 
       - name: Prepare Hassan-Games.apk
-        run: cp app/build/outputs/apk/debug/app-debug.apk Hassan-Games.apk
+        run: |
+          cp app/build/outputs/apk/debug/app-debug.apk Hassan-Games.apk
+          cp app/build/outputs/apk/debug/app-debug.apk Hassan-Games-v2.0.apk
 
       - name: Upload APK Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Hassan-Games-APK
-          path: Hassan-Games.apk
+          name: Hassan-Games-APK-v2.0
+          path: |
+            Hassan-Games.apk
+            Hassan-Games-v2.0.apk
 
-      - name: Publish APK to GitHub Releases
+      - name: Publish Latest APK to GitHub Releases
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: v1.0.0
-          name: "Hassan Games APK v1.0.0"
-          body: "تحميل مباشر لتطبيق Hassan Games لتقوية الألعاب وأزرار الكتف L1/R1 والشريط الجانبي العائم."
-          files: Hassan-Games.apk
+          tag_name: v2.0.${{ github.run_number }}
+          name: "Hassan Games Pro v2.0.${{ github.run_number }} (الإصدار الشامل الجديد)"
+          body: |
+            ### 🚀 الإصدار الشامل الجديد Hassan Games Pro v2.0
+            - **One-Tap Game Preparation:** تجهيز الألعاب بضغطة واحدة مع مؤشر المراحل (GAME READY).
+            - **Smart Thermal Mode:** الوضع الحراري الذكي المتكيف مع حرارة الجهاز الحقيقية.
+            - **Per-Game Profiles:** نظام بروفايلات مستقل ومفصل لكل لعبة مع الحفظ التلقائي.
+            - **Notification Shield & Quick Reconnect:** درع عزل الإشعارات والعودة السريعة للعبة.
+            - **Auto Settings Advisor:** مستشار إعدادات الجرافيك والفريمات حسب عتاد الهاتف.
+            - **Studio HD Voice Changer (بدون مايك أو بالمايك):** مغير صوت صافي (أنثى / رجل / سنجاب / روبوت) مع جمل جاهزة للسماع الفوري بدون تحدث + زر البدء والإنهاء الموحد.
+          files: |
+            Hassan-Games.apk
+            Hassan-Games-v2.0.apk
+          make_latest: true
+          overwrite: true
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

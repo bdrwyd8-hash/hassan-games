@@ -58,15 +58,24 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.AdvisorPresetMode
 import com.example.model.AudioRadarPreset
+import com.example.model.AutoSettingsRecommendation
 import com.example.model.CrosshairColorOption
 import com.example.model.CrosshairConfig
 import com.example.model.CrosshairStyle
 import com.example.model.EdgeSidebarConfig
 import com.example.model.LowEndOptimizerConfig
+import com.example.model.NotificationShieldState
 import com.example.model.ScreenVisionFilter
+import com.example.model.SmartThermalMode
+import com.example.model.SmartThermalStatus
 import com.example.model.VoiceModPreset
+import com.example.ui.components.AutoSettingsAdvisorCard
 import com.example.ui.components.CrosshairCanvasView
+import com.example.ui.components.GameBoxEnvironmentCard
+import com.example.ui.components.SmartThermalAndShieldCard
+import com.example.ui.components.StudioVoiceChangerCard
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.CyberCyan
@@ -95,7 +104,30 @@ fun ArsenalGfxScreen(
     onEnableSystemFloatingSidebar: () -> Unit,
     onSelectAudioRadar: (AudioRadarPreset) -> Unit,
     onSelectVoiceMod: (VoiceModPreset) -> Unit,
-    onOpenAccessibilityForOverlay: () -> Unit
+    onOpenAccessibilityForOverlay: () -> Unit,
+    isLiveMicActive: Boolean = false,
+    isRecordingClip: Boolean = false,
+    isPlayingClip: Boolean = false,
+    micInputLevel: Float = 0f,
+    voiceStatusText: String = "",
+    noiseGateEnabled: Boolean = true,
+    hasMicPermission: () -> Boolean = { false },
+    onToggleLiveMic: () -> Unit = {},
+    onStartOrStopClipTest: () -> Unit = {},
+    onReplayRecordedClip: () -> Unit = {},
+    onToggleNoiseGate: (Boolean) -> Unit = {},
+    selectedDemoPhraseIndex: Int = 0,
+    onPlayReadyDemoWithoutMic: (VoiceModPreset, Int) -> Unit = { preset, _ -> onSelectVoiceMod(preset) },
+    smartThermalStatus: SmartThermalStatus = SmartThermalStatus(),
+    notificationShieldState: NotificationShieldState = NotificationShieldState(),
+    onSelectThermalMode: (SmartThermalMode) -> Unit = {},
+    onToggleNotificationShield: () -> Unit = {},
+    onOpenDndPermissionSettings: () -> Unit = {},
+    onToggleHudMetric: (fps: Boolean?, temp: Boolean?, ram: Boolean?, magnifier: Boolean?) -> Unit = { _, _, _, _ -> },
+    onUpdateMagnifierZoom: (Float) -> Unit = {},
+    autoSettingsRecommendation: AutoSettingsRecommendation = AutoSettingsRecommendation(),
+    onSelectAdvisorMode: (AdvisorPresetMode) -> Unit = {},
+    onApplyAdvisorRecommendations: () -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier
@@ -104,6 +136,29 @@ fun ArsenalGfxScreen(
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // 0. Auto Settings Advisor Card (Hardware-driven Graphics & FPS Advisor)
+        item {
+            AutoSettingsAdvisorCard(
+                recommendation = autoSettingsRecommendation,
+                onSelectMode = onSelectAdvisorMode,
+                onApplyRecommendedTools = onApplyAdvisorRecommendations
+            )
+        }
+
+        // 0b. Smart Thermal Mode + Notification Shield + Floating HUD & Magnifier
+        item {
+            SmartThermalAndShieldCard(
+                thermalStatus = smartThermalStatus,
+                shieldState = notificationShieldState,
+                lowEndConfig = lowEndConfig,
+                onSelectThermalMode = onSelectThermalMode,
+                onToggleNotificationShield = onToggleNotificationShield,
+                onOpenDndPermissionSettings = onOpenDndPermissionSettings,
+                onToggleHudMetric = onToggleHudMetric,
+                onUpdateMagnifierZoom = onUpdateMagnifierZoom
+            )
+        }
+
         // 1. Floating Edge-Swipe Game Bar Card (Game Genie / Game Turbo Sidebar)
         item {
             FloatingEdgeSidebarSettingsCard(
@@ -116,7 +171,28 @@ fun ArsenalGfxScreen(
             )
         }
 
-        // 2. Multi-Brand Screen Vision Filters (ROG Night Hunter / Black Shark / POCO HDR)
+        // 2. Studio HD Microphone Voice Changer Card (Robot / Squirrel / Female / Male)
+        item {
+            StudioVoiceChangerCard(
+                activeVoicePreset = lowEndConfig.voiceModPreset,
+                isLiveMicActive = isLiveMicActive,
+                isRecordingClip = isRecordingClip,
+                isPlayingClip = isPlayingClip,
+                micInputLevel = micInputLevel,
+                voiceStatusText = voiceStatusText,
+                noiseGateEnabled = noiseGateEnabled,
+                hasMicPermission = hasMicPermission,
+                onSelectVoicePreset = onSelectVoiceMod,
+                onToggleLiveMic = onToggleLiveMic,
+                onStartOrStopClipTest = onStartOrStopClipTest,
+                onReplayRecordedClip = onReplayRecordedClip,
+                onToggleNoiseGate = onToggleNoiseGate,
+                selectedDemoPhraseIndex = selectedDemoPhraseIndex,
+                onPlayReadyDemoWithoutMic = onPlayReadyDemoWithoutMic
+            )
+        }
+
+        // 3. Multi-Brand Screen Vision Filters (ROG Night Hunter / Black Shark / POCO HDR)
         item {
             ScreenVisionFiltersCard(
                 activeFilter = lowEndConfig.visionFilter,
@@ -145,7 +221,15 @@ fun ArsenalGfxScreen(
             )
         }
 
-        // 5. Low-End Resolution & Touch Sampling Booster Card
+        // 5. GG GameBox Pro Environment & DNS Optimizer Card
+        item {
+            GameBoxEnvironmentCard(
+                lowEndConfig = lowEndConfig,
+                onUpdateLowEnd = onUpdateLowEnd
+            )
+        }
+
+        // 6. Low-End Resolution & Touch Sampling Booster Card
         item {
             LowEndResolutionAndTouchCard(
                 lowEndConfig = lowEndConfig,

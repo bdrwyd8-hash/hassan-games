@@ -4,10 +4,16 @@ import android.app.Application
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.HardwareTelemetryEngine
+import com.example.data.RealTimeVoiceChangerEngine
 import com.example.data.RedCorePreferencesRepository
 import com.example.data.SystemBoosterManager
+import com.example.model.ActiveGameSession
+import com.example.model.AdvisorPresetMode
 import com.example.model.AudioRadarPreset
+import com.example.model.AutoSettingsRecommendation
 import com.example.model.BoostResult
+import com.example.model.ClonedButtonsConfig
+import com.example.model.ClonedTouchButton
 import com.example.model.CrosshairColorOption
 import com.example.model.CrosshairConfig
 import com.example.model.CrosshairStyle
@@ -16,9 +22,17 @@ import com.example.model.GameSpaceProfile
 import com.example.model.HardwareTelemetry
 import com.example.model.InstalledAppProcess
 import com.example.model.LowEndOptimizerConfig
+import com.example.model.NotificationShieldState
+import com.example.model.OneTapGamePrepStatus
+import com.example.model.OneTapPrepOverallState
+import com.example.model.OneTapPrepStep
 import com.example.model.PerformanceMode
+import com.example.model.PrepStepState
+import com.example.model.QuickReconnectState
 import com.example.model.ScreenVisionFilter
 import com.example.model.ShoulderTriggerConfig
+import com.example.model.SmartThermalMode
+import com.example.model.SmartThermalStatus
 import com.example.model.TriggerFireMode
 import com.example.model.VoiceModPreset
 import com.example.service.TriggerButtonType
@@ -46,11 +60,21 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     private val prefsRepo = RedCorePreferencesRepository(application.applicationContext)
     private val telemetryEngine = HardwareTelemetryEngine(application.applicationContext)
     private val boosterManager = SystemBoosterManager(application.applicationContext)
+    private val voiceChangerEngine = RealTimeVoiceChangerEngine(application.applicationContext)
+
+    val isMasterEngineRunning: StateFlow<Boolean> = TriggerEventBus.isMasterEngineRunning
+    val isLiveMicActive: StateFlow<Boolean> = voiceChangerEngine.isLiveMicActive
+    val isRecordingVoiceClip: StateFlow<Boolean> = voiceChangerEngine.isRecordingClip
+    val isPlayingVoiceClip: StateFlow<Boolean> = voiceChangerEngine.isPlayingClip
+    val micInputLevel: StateFlow<Float> = voiceChangerEngine.micInputLevel
+    val voiceStatusText: StateFlow<String> = voiceChangerEngine.voiceStatusText
+    val voiceNoiseGateEnabled: StateFlow<Boolean> = voiceChangerEngine.noiseGateEnabled
+    val selectedVoiceDemoPhraseIndex: StateFlow<Int> = voiceChangerEngine.selectedPhraseIndex
 
     private val _selectedTab = MutableStateFlow(RedCoreTab.COMMAND_CENTER)
     val selectedTab: StateFlow<RedCoreTab> = _selectedTab.asStateFlow()
 
-    private val _performanceMode = MutableStateFlow(PerformanceMode.DIABLO)
+    private val _performanceMode = MutableStateFlow(PerformanceMode.BALANCE)
     val performanceMode: StateFlow<PerformanceMode> = _performanceMode.asStateFlow()
 
     private val _triggerConfig = MutableStateFlow(ShoulderTriggerConfig())
@@ -64,6 +88,9 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
 
     private val _lowEndConfig = MutableStateFlow(LowEndOptimizerConfig())
     val lowEndConfig: StateFlow<LowEndOptimizerConfig> = _lowEndConfig.asStateFlow()
+
+    private val _clonedButtonsConfig = MutableStateFlow(ClonedButtonsConfig())
+    val clonedButtonsConfig: StateFlow<ClonedButtonsConfig> = _clonedButtonsConfig.asStateFlow()
 
     private val _telemetry = MutableStateFlow(HardwareTelemetry())
     val telemetry: StateFlow<HardwareTelemetry> = _telemetry.asStateFlow()
@@ -98,6 +125,21 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     private val _activeGameProfile = MutableStateFlow<GameSpaceProfile?>(null)
     val activeGameProfile: StateFlow<GameSpaceProfile?> = _activeGameProfile.asStateFlow()
 
+    private val _activeGameSession = MutableStateFlow(ActiveGameSession())
+    val activeGameSession: StateFlow<ActiveGameSession> = _activeGameSession.asStateFlow()
+
+    private val _oneTapPrepStatus = MutableStateFlow(OneTapGamePrepStatus())
+    val oneTapPrepStatus: StateFlow<OneTapGamePrepStatus> = _oneTapPrepStatus.asStateFlow()
+
+    private val _smartThermalStatus = MutableStateFlow(SmartThermalStatus())
+    val smartThermalStatus: StateFlow<SmartThermalStatus> = _smartThermalStatus.asStateFlow()
+
+    private val _notificationShieldState = MutableStateFlow(NotificationShieldState())
+    val notificationShieldState: StateFlow<NotificationShieldState> = _notificationShieldState.asStateFlow()
+
+    private val _autoSettingsRecommendation = MutableStateFlow(AutoSettingsRecommendation())
+    val autoSettingsRecommendation: StateFlow<AutoSettingsRecommendation> = _autoSettingsRecommendation.asStateFlow()
+
     private val _canDrawOverlays = MutableStateFlow(boosterManager.canDrawSystemOverlays())
     val canDrawOverlays: StateFlow<Boolean> = _canDrawOverlays.asStateFlow()
 
@@ -105,14 +147,36 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     private var r1InAppBurstJob: Job? = null
     private var l1KeyHeldDown = false
     private var r1KeyHeldDown = false
+    private var lastAutoDetectedGamePkg = ""
+
+    @Volatile
+    private var isAppInForeground = true
 
     init {
-        telemetryEngine.startFrameMonitor()
+        telemetryEngine.triggerLightweightFrameSample()
         observePreferences()
         observeOverlayRequests()
+        observeForegroundGameTransitions()
         startTelemetryLoop()
         startAutoBackgroundCleanerLoop()
         refreshInstalledAppsAndGames()
+    }
+
+    fun setAppInForeground(inForeground: Boolean) {
+        isAppInForeground = inForeground
+        if (inForeground) {
+            telemetryEngine.triggerLightweightFrameSample()
+            _canDrawOverlays.value = boosterManager.canDrawSystemOverlays()
+            refreshQuickReconnectState()
+            val hasDndPerm = boosterManager.hasNotificationPolicyAccess()
+            if (_notificationShieldState.value.hasDndPolicyPermission != hasDndPerm) {
+                _notificationShieldState.value = _notificationShieldState.value.copy(
+                    hasDndPolicyPermission = hasDndPerm
+                )
+            }
+        } else {
+            telemetryEngine.stopFrameMonitor()
+        }
     }
 
     private fun observePreferences() {
@@ -144,6 +208,19 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
             prefsRepo.lowEndOptimizerFlow.collectLatest { config ->
                 _lowEndConfig.value = config
                 TriggerEventBus.updateLowEndConfig(config)
+                voiceChangerEngine.setPreset(config.voiceModPreset)
+                recomputeThermalAndAdvisorStates(_telemetry.value, config)
+                if (config.notificationShieldEnabled != _notificationShieldState.value.enabled) {
+                    val shieldState = boosterManager.applyNotificationShield(config.notificationShieldEnabled)
+                    _notificationShieldState.value = shieldState
+                    TriggerEventBus.updateNotificationShieldState(shieldState)
+                }
+            }
+        }
+        viewModelScope.launch {
+            prefsRepo.clonedButtonsConfigFlow.collectLatest { config ->
+                _clonedButtonsConfig.value = config
+                TriggerEventBus.updateClonedButtonsConfig(config)
             }
         }
         viewModelScope.launch {
@@ -151,6 +228,31 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
                 _whitelistedPackages.value = set
                 _backgroundApps.value = _backgroundApps.value.map { app ->
                     app.copy(isWhitelisted = set.contains(app.packageName))
+                }
+            }
+        }
+        viewModelScope.launch {
+            prefsRepo.savedPerGameProfilesRawFlow.collectLatest { rawSaved ->
+                val defaultCatalog = boosterManager.buildGameSpaceCatalog()
+                val merged = prefsRepo.mergeSavedProfilesWithCatalog(
+                    rawSaved = rawSaved,
+                    defaultCatalog = defaultCatalog,
+                    isPackageInstalledCheck = { pkg -> boosterManager.isPackageInstalled(pkg) }
+                )
+                _gameCatalog.value = merged
+
+                val lastActiveId = prefsRepo.lastActiveProfileIdFlow.first()
+                val currentActive = _activeGameProfile.value
+                val matched = merged.find { it.id == (currentActive?.id ?: lastActiveId) } ?: merged.firstOrNull()
+                if (matched != null && _activeGameProfile.value == null) {
+                    _activeGameProfile.value = matched
+                    updateActiveSessionForProfile(matched)
+                    recomputeThermalAndAdvisorStates(_telemetry.value, _lowEndConfig.value)
+                } else if (currentActive != null) {
+                    merged.find { it.id == currentActive.id }?.let { updatedProfile ->
+                        _activeGameProfile.value = updatedProfile
+                        updateActiveSessionForProfile(updatedProfile)
+                    }
                 }
             }
         }
@@ -162,22 +264,110 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
                 runSuperBoostNow()
             }
         }
+        viewModelScope.launch {
+            TriggerEventBus.coolDownRequests.collectLatest {
+                runCpuCoolDownNow()
+            }
+        }
+        viewModelScope.launch {
+            TriggerEventBus.toggleNotificationShieldRequests.collectLatest {
+                toggleNotificationShield()
+            }
+        }
+        viewModelScope.launch {
+            TriggerEventBus.quickReconnectRequests.collectLatest {
+                quickReconnectToActiveGame()
+            }
+        }
+        viewModelScope.launch {
+            TriggerEventBus.clonedButtonsConfig.collectLatest { busConfig ->
+                if (busConfig != _clonedButtonsConfig.value) {
+                    _clonedButtonsConfig.value = busConfig
+                    prefsRepo.saveClonedButtonsConfig(busConfig)
+                }
+            }
+        }
+    }
+
+    /**
+     * Automatically detects when the user opens a configured game or exits back to launcher
+     * (when Accessibility Service is active) and applies/restores the per-game profile.
+     */
+    private fun observeForegroundGameTransitions() {
+        viewModelScope.launch {
+            TriggerEventBus.detectedForegroundPackage.collectLatest { fgPkg ->
+                if (fgPkg.isBlank()) return@collectLatest
+                val matchedGame = _gameCatalog.value.find {
+                    it.packageName.equals(fgPkg, ignoreCase = true)
+                }
+                if (matchedGame != null && fgPkg != lastAutoDetectedGamePkg) {
+                    lastAutoDetectedGamePkg = fgPkg
+                    applyGameProfile(matchedGame, showFeedbackBanner = false)
+                } else if (matchedGame == null && lastAutoDetectedGamePkg.isNotBlank()) {
+                    // User exited the game to another app/launcher
+                    lastAutoDetectedGamePkg = ""
+                    refreshQuickReconnectState()
+                    if (_lowEndConfig.value.autoRestoreSettingsOnExit && _notificationShieldState.value.enabled) {
+                        val restored = boosterManager.applyNotificationShield(false)
+                        _notificationShieldState.value = restored
+                        TriggerEventBus.updateNotificationShieldState(restored)
+                    }
+                }
+            }
+        }
+    }
+
+    private fun recomputeThermalAndAdvisorStates(
+        telemetry: HardwareTelemetry,
+        config: LowEndOptimizerConfig
+    ) {
+        val thermalStatus = telemetryEngine.evaluateSmartThermalStatus(
+            telemetry = telemetry,
+            mode = config.smartThermalMode
+        )
+        _smartThermalStatus.value = thermalStatus
+        TriggerEventBus.updateSmartThermalStatus(thermalStatus)
+
+        if (thermalStatus.audioDspThrottled) {
+            boosterManager.releaseThermalHeavyEffects()
+        }
+
+        val advisorRec = telemetryEngine.buildAutoSettingsRecommendation(
+            telemetry = telemetry,
+            mode = config.advisorPresetMode,
+            gameTitle = _activeGameProfile.value?.title
+        )
+        _autoSettingsRecommendation.value = advisorRec
     }
 
     private fun startTelemetryLoop() {
         viewModelScope.launch {
             var tick = 0
             while (isActive) {
-                val shouldPing = (tick % 4 == 0)
-                val snapshot = telemetryEngine.sampleTelemetry(
-                    activeMode = _performanceMode.value,
-                    measureNetworkPing = shouldPing
-                )
-                _telemetry.value = snapshot
-                TriggerEventBus.updateTelemetry(snapshot)
-                _canDrawOverlays.value = boosterManager.canDrawSystemOverlays()
-                tick++
-                delay(1500L)
+                val shouldSample = isAppInForeground || TriggerEventBus.isOverlayServiceRunning.value
+                if (shouldSample && TriggerEventBus.isMasterEngineRunning.value) {
+                    if (isAppInForeground && !_smartThermalStatus.value.reduceAnimationsActive) {
+                        telemetryEngine.triggerLightweightFrameSample()
+                    }
+                    val shouldPing = isAppInForeground && (tick % 8 == 0)
+                    val snapshot = telemetryEngine.sampleTelemetry(
+                        activeMode = _performanceMode.value,
+                        measureNetworkPing = shouldPing
+                    )
+                    _telemetry.value = snapshot
+                    TriggerEventBus.updateTelemetry(snapshot)
+                    recomputeThermalAndAdvisorStates(snapshot, _lowEndConfig.value)
+                    if (isAppInForeground) {
+                        _canDrawOverlays.value = boosterManager.canDrawSystemOverlays()
+                    }
+                    tick++
+                }
+                val adaptiveDelay = if (isAppInForeground) {
+                    _smartThermalStatus.value.effectivePollIntervalMs.coerceIn(4500L, 15000L)
+                } else {
+                    12000L
+                }
+                delay(adaptiveDelay)
             }
         }
     }
@@ -186,11 +376,14 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
         viewModelScope.launch {
             while (isActive) {
                 val cfg = _lowEndConfig.value
-                val waitSec = cfg.autoCleanIntervalSec.coerceIn(20, 180)
+                val waitSec = cfg.autoCleanIntervalSec.coerceIn(60, 240)
                 delay(waitSec * 1000L)
-                if (cfg.autoCleanInBackground && !_isBoosting.value) {
+                // Only run gentle background cleanup if RAM is high or Smart Thermal requests background trim
+                val shouldClean = (cfg.autoCleanInBackground || _smartThermalStatus.value.backgroundTrimActive) &&
+                    !_isBoosting.value && TriggerEventBus.isMasterEngineRunning.value
+                if (shouldClean) {
                     val currentRamPct = _telemetry.value.ramUsagePercent
-                    if (currentRamPct >= cfg.ramThresholdPercent || _telemetry.value.cacheEstimatedMb > 45f) {
+                    if (currentRamPct >= cfg.ramThresholdPercent.coerceAtLeast(80) || _smartThermalStatus.value.backgroundTrimActive) {
                         val result = boosterManager.executeSuperBoost(
                             apps = _backgroundApps.value,
                             whitelistedPackages = _whitelistedPackages.value,
@@ -199,10 +392,46 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
                         telemetryEngine.notifyCacheCleaned(result.cleanedCacheMb)
                         _lastBoostResult.value = result
                         _boostHistory.value = (listOf(result) + _boostHistory.value).take(10)
-                        refreshInstalledAppsAndGames()
                     }
                 }
             }
+        }
+    }
+
+    fun runCpuCoolDownNow() {
+        if (_isBoosting.value) return
+        viewModelScope.launch {
+            _isBoosting.value = true
+            _boostProgress.value = 0.35f
+            _boostStageText.value = "❄️ جاري تفعيل وضع الاستقرار الحراري وتخفيف حمل الخلفية..."
+            boosterManager.releaseThermalHeavyEffects()
+            if (_performanceMode.value == PerformanceMode.DIABLO) {
+                _performanceMode.value = PerformanceMode.BALANCE
+                TriggerEventBus.updatePerformanceMode(PerformanceMode.BALANCE)
+                prefsRepo.savePerformanceMode(PerformanceMode.BALANCE)
+            }
+            if (_lowEndConfig.value.smartThermalMode == SmartThermalMode.OFF) {
+                updateLowEndConfig { it.copy(smartThermalMode = SmartThermalMode.AUTO_ADAPTIVE) }
+            }
+            delay(250L)
+
+            val result = boosterManager.executeSuperBoost(
+                apps = _backgroundApps.value,
+                whitelistedPackages = _whitelistedPackages.value,
+                isAutoBoost = true
+            )
+            telemetryEngine.notifyCacheCleaned(result.cleanedCacheMb)
+
+            _boostProgress.value = 1.0f
+            _boostStageText.value = "❄️ تم ضبط الاستقرار الحراري وإيقاف استنزاف الخلفية!"
+            val updatedSnap = telemetryEngine.sampleTelemetry(_performanceMode.value, measureNetworkPing = false)
+            _telemetry.value = updatedSnap
+            TriggerEventBus.updateTelemetry(updatedSnap)
+            recomputeThermalAndAdvisorStates(updatedSnap, _lowEndConfig.value)
+
+            delay(300L)
+            _isBoosting.value = false
+            showBanner("❄️ تم تفعيل الاستقرار الحراري الذكي (${updatedSnap.batteryTempCelsius}°C) وتقليل حمل الخلفية للحفاظ على ثبات الإطارات!")
         }
     }
 
@@ -237,7 +466,15 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
             val whitelist = prefsRepo.whitelistedPackagesFlow.first()
             val apps = boosterManager.scanBackgroundApps(whitelist)
             _backgroundApps.value = apps
-            _gameCatalog.value = boosterManager.buildGameSpaceCatalog()
+            val rawSaved = prefsRepo.savedPerGameProfilesRawFlow.first()
+            val defaultCatalog = boosterManager.buildGameSpaceCatalog()
+            val merged = prefsRepo.mergeSavedProfilesWithCatalog(
+                rawSaved = rawSaved,
+                defaultCatalog = defaultCatalog,
+                isPackageInstalledCheck = { pkg -> boosterManager.isPackageInstalled(pkg) }
+            )
+            _gameCatalog.value = merged
+            refreshQuickReconnectState()
         }
     }
 
@@ -320,6 +557,9 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
 
         val currentlyRunning = TriggerEventBus.isOverlayServiceRunning.value
         val nextState = !currentlyRunning
+        if (nextState) {
+            TriggerEventBus.setMasterEngineRunning(true)
+        }
         updateEdgeSidebarConfig { it.copy(systemFloatingEnabled = nextState) }
         val started = boosterManager.startOrStopFloatingSidebarService(nextState)
         if (started) {
@@ -444,6 +684,48 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
         }
     }
 
+    fun updateClonedButtonsConfig(transform: (ClonedButtonsConfig) -> ClonedButtonsConfig) {
+        viewModelScope.launch {
+            val updated = transform(_clonedButtonsConfig.value)
+            _clonedButtonsConfig.value = updated
+            TriggerEventBus.updateClonedButtonsConfig(updated)
+            prefsRepo.saveClonedButtonsConfig(updated)
+        }
+    }
+
+    fun activateOrToggleClonedButtonsOverlay() {
+        val hasPerm = boosterManager.canDrawSystemOverlays()
+        _canDrawOverlays.value = hasPerm
+        if (!hasPerm) {
+            showBanner("من فضلك فعّل إذن 'الظهور فوق التطبيقات' لإظهار الأزرار المنسوخة القابلة للتحريك فوق الألعاب")
+            boosterManager.openOverlayPermissionSettings()
+            return
+        }
+
+        val nextOverlayState = !_clonedButtonsConfig.value.systemOverlayEnabled
+        updateClonedButtonsConfig {
+            it.copy(
+                masterEnabled = true,
+                systemOverlayEnabled = nextOverlayState
+            )
+        }
+        if (nextOverlayState) {
+            TriggerEventBus.setMasterEngineRunning(true)
+            updateEdgeSidebarConfig { it.copy(systemFloatingEnabled = true) }
+            boosterManager.startOrStopFloatingSidebarService(true)
+            showBanner("🔘 تم إظهار الأزرار المنسوخة فوق الشاشة! ضع (🎯 الهدف) فوق الزر الأصلي وحرّك (C1/C2) للمكان المناسب لك ثم اضغط قفل 🔒")
+        } else {
+            showBanner("تم إخفاء الأزرار المنسوخة العائمة الخارجية")
+        }
+    }
+
+    fun triggerClonedButtonInApp(button: ClonedTouchButton, isDown: Boolean = true) {
+        if (isDown) {
+            boosterManager.playTacticalFeedback(isMajorBoost = false)
+        }
+        TriggerEventBus.emitClonedButtonTap(button, isDown = isDown)
+    }
+
     fun selectAudioRadarPreset(preset: AudioRadarPreset) {
         boosterManager.applyAudioRadarPreset(preset)
         updateLowEndConfig { it.copy(audioRadarPreset = preset) }
@@ -451,9 +733,559 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun selectVoiceModPreset(preset: VoiceModPreset) {
-        boosterManager.playVoiceChangerSample(preset)
+        voiceChangerEngine.previewVoicePreset(preset)
         updateLowEndConfig { it.copy(voiceModPreset = preset) }
-        showBanner("تم تفعيل فلتر مغير الصوت: ${preset.arabicName}")
+        showBanner("🔊 جاري إسماعك مغير الصوت (${preset.arabicName}) فوراً بدون مايك!")
+    }
+
+    fun playReadyVoiceSampleWithoutMic(
+        preset: VoiceModPreset = _lowEndConfig.value.voiceModPreset,
+        phraseIndex: Int = voiceChangerEngine.selectedPhraseIndex.value
+    ) {
+        updateLowEndConfig { it.copy(voiceModPreset = preset) }
+        voiceChangerEngine.playReadyVoiceDemoWithoutSpeaking(preset, phraseIndex)
+        showBanner("🔊 تشغيل صوت جاهز بدون ما تتكلم: ${preset.arabicName}")
+    }
+
+    fun hasMicrophonePermission(): Boolean {
+        return voiceChangerEngine.hasRecordAudioPermission()
+    }
+
+    fun toggleLiveMicrophoneVoiceChanger() {
+        val started = voiceChangerEngine.toggleLiveMicStream()
+        if (started) {
+            TriggerEventBus.setMasterEngineRunning(true)
+            showBanner("🔴 المايك المباشر يعمل الآن بفلتر (${_lowEndConfig.value.voiceModPreset.arabicName}) بصوت نقي وبدون تشويش")
+        } else {
+            showBanner("تم إيقاف البث المباشر للمايكروفون")
+        }
+    }
+
+    fun startOrStopVoiceTestRecording() {
+        voiceChangerEngine.startOrStopVoiceTestRecording()
+    }
+
+    fun replayRecordedVoiceSample() {
+        voiceChangerEngine.replayLastRecordedVoice()
+    }
+
+    fun setVoiceNoiseGate(enabled: Boolean) {
+        voiceChangerEngine.setNoiseGateEnabled(enabled)
+    }
+
+    /**
+     * Unified Start / Stop & Exit toggle:
+     * - If stopped (false): Starts the engine & gaming tools (sets running = true).
+     * - If running (true): Stops all background services, overlays, mic, and closes the app completely!
+     */
+    fun toggleMasterStartOrStopAndExit(onExitActivity: () -> Unit) {
+        if (!TriggerEventBus.isMasterEngineRunning.value) {
+            TriggerEventBus.setMasterEngineRunning(true)
+            telemetryEngine.triggerLightweightFrameSample()
+            boosterManager.playTacticalFeedback(isMajorBoost = true)
+            showBanner("▶️ تم بدء تشغيل البرنامج وتفعيل محرك الألعاب بنجاح! (اضغط 'إنهاء وإغلاق' عند الانتهاء من اللعب)")
+        } else {
+            stopAllBackgroundWorkAndExit(onExitActivity)
+        }
+    }
+
+    fun stopAllBackgroundWorkAndExit(onExitActivity: () -> Unit) {
+        TriggerEventBus.setMasterEngineRunning(false)
+        TriggerEventBus.setInAppSidebarOpen(false)
+        voiceChangerEngine.stopAllVoiceActivity()
+        boosterManager.releaseThermalHeavyEffects()
+        val restoredShield = boosterManager.applyNotificationShield(false)
+        _notificationShieldState.value = restoredShield
+        TriggerEventBus.updateNotificationShieldState(restoredShield)
+        boosterManager.startOrStopFloatingSidebarService(false)
+        telemetryEngine.stopFrameMonitor()
+        l1InAppBurstJob?.cancel()
+        r1InAppBurstJob?.cancel()
+        updateEdgeSidebarConfig { it.copy(systemFloatingEnabled = false) }
+        updateClonedButtonsConfig { it.copy(systemOverlayEnabled = false) }
+        updateCrosshairConfig { it.copy(systemOverlayEnabled = false) }
+        updateLowEndConfig {
+            it.copy(
+                notificationShieldEnabled = false,
+                fpsOverlayEnabled = false,
+                tempOverlayEnabled = false,
+                ramOverlayEnabled = false,
+                magnifierEnabled = false
+            )
+        }
+        onExitActivity()
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 1. ONE-TAP GAME PREPARATION (نظام التجهيز الشامل بضغطة واحدة)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    fun runOneTapGamePreparation(
+        targetProfile: GameSpaceProfile? = _activeGameProfile.value,
+        onReadyCallback: (() -> Unit)? = null
+    ) {
+        if (_oneTapPrepStatus.value.overallState == OneTapPrepOverallState.PREPARING) return
+        viewModelScope.launch {
+            TriggerEventBus.setMasterEngineRunning(true)
+            val gameName = targetProfile?.title ?: "جميع الألعاب (الوضع العام)"
+            val initialSteps = listOf(
+                OneTapPrepStep(
+                    id = "mem_trim",
+                    titleAr = "1. تنظيف الكاش وتخفيف العمليات الخلفية غير الضرورية",
+                    detailAr = "تحرير الذاكرة العشوائية بدون استهلاك معالج إضافي",
+                    state = PrepStepState.RUNNING
+                ),
+                OneTapPrepStep(
+                    id = "thermal_guard",
+                    titleAr = "2. معايرة الوضع الحراري الذكي واستقرار المعالج",
+                    detailAr = "تفعيل ${targetProfile?.smartThermalMode?.arabicTitle ?: _lowEndConfig.value.smartThermalMode.arabicTitle}",
+                    state = PrepStepState.PENDING
+                ),
+                OneTapPrepStep(
+                    id = "notif_shield",
+                    titleAr = "3. تفعيل درع عزل الإشعارات والتنبيهات المشتتة",
+                    detailAr = "منع المقاطعة الصوتية والبصرية أثناء جلسة اللعب",
+                    state = PrepStepState.PENDING
+                ),
+                OneTapPrepStep(
+                    id = "profile_tools",
+                    titleAr = "4. تطبيق بروفايل اللعب وأدوات التحكم والشاشة",
+                    detailAr = if (targetProfile != null) "تطبيق إعدادات (${targetProfile.title})" else "ضبط أزرار L1/R1 ومؤشر التصويب",
+                    state = PrepStepState.PENDING
+                )
+            )
+
+            _oneTapPrepStatus.value = OneTapGamePrepStatus(
+                overallState = OneTapPrepOverallState.PREPARING,
+                badgeText = "PREPARING...",
+                targetGameTitle = gameName,
+                steps = initialSteps
+            )
+
+            // Step 1: Fast, safe memory & cache trim
+            val boostRes = boosterManager.executeSuperBoost(
+                apps = _backgroundApps.value,
+                whitelistedPackages = _whitelistedPackages.value,
+                isAutoBoost = true
+            )
+            telemetryEngine.notifyCacheCleaned(boostRes.cleanedCacheMb)
+            _lastBoostResult.value = boostRes
+            _boostHistory.value = (listOf(boostRes) + _boostHistory.value).take(10)
+            delay(180L)
+
+            // Step 2: Smart Thermal calibration
+            val step2List = initialSteps.map {
+                when (it.id) {
+                    "mem_trim" -> it.copy(
+                        detailAr = "تم تحرير ${boostRes.freedRamMb} MB وتوقيف ${boostRes.stoppedAppsCount} عمليات خلفية",
+                        state = PrepStepState.COMPLETED
+                    )
+                    "thermal_guard" -> it.copy(state = PrepStepState.RUNNING)
+                    else -> it
+                }
+            }
+            _oneTapPrepStatus.value = _oneTapPrepStatus.value.copy(steps = step2List)
+
+            val targetThermal = targetProfile?.smartThermalMode
+                ?: if (_lowEndConfig.value.smartThermalMode == SmartThermalMode.OFF) SmartThermalMode.AUTO_ADAPTIVE else _lowEndConfig.value.smartThermalMode
+            delay(160L)
+
+            // Step 3: Notification Shield
+            val step3List = step2List.map {
+                when (it.id) {
+                    "thermal_guard" -> it.copy(
+                        detailAr = "نشط: ${targetThermal.arabicTitle} (${_telemetry.value.batteryTempCelsius}°C)",
+                        state = PrepStepState.COMPLETED
+                    )
+                    "notif_shield" -> it.copy(state = PrepStepState.RUNNING)
+                    else -> it
+                }
+            }
+            _oneTapPrepStatus.value = _oneTapPrepStatus.value.copy(steps = step3List)
+
+            val shouldEnableShield = targetProfile?.notificationShieldEnabled ?: true
+            val shieldState = boosterManager.applyNotificationShield(shouldEnableShield)
+            _notificationShieldState.value = shieldState
+            TriggerEventBus.updateNotificationShieldState(shieldState)
+            delay(160L)
+
+            // Step 4: Apply Per-Game Profile or general gaming configuration
+            val step4List = step3List.map {
+                when (it.id) {
+                    "notif_shield" -> it.copy(
+                        detailAr = shieldState.statusLabelAr,
+                        state = PrepStepState.COMPLETED
+                    )
+                    "profile_tools" -> it.copy(state = PrepStepState.RUNNING)
+                    else -> it
+                }
+            }
+            _oneTapPrepStatus.value = _oneTapPrepStatus.value.copy(steps = step4List)
+
+            if (targetProfile != null) {
+                applyGameProfileInternal(targetProfile)
+            } else {
+                updateLowEndConfig {
+                    it.copy(
+                        smartThermalMode = targetThermal,
+                        notificationShieldEnabled = shouldEnableShield
+                    )
+                }
+            }
+            boosterManager.applyGameMediaVolumePercent(_lowEndConfig.value.gameMediaVolumePercent)
+            delay(160L)
+
+            val updatedSnap = telemetryEngine.sampleTelemetry(_performanceMode.value, measureNetworkPing = false)
+            _telemetry.value = updatedSnap
+            TriggerEventBus.updateTelemetry(updatedSnap)
+            recomputeThermalAndAdvisorStates(updatedSnap, _lowEndConfig.value)
+
+            val completedSteps = step4List.map {
+                if (it.id == "profile_tools") {
+                    it.copy(
+                        detailAr = if (targetProfile != null) {
+                            "تم تفعيل بروفايل ${targetProfile.title} (${targetProfile.recommendedMode.englishBadge})"
+                        } else {
+                            "تم تفعيل ${_performanceMode.value.arabicTitle} ومعايرة الأدوات"
+                        },
+                        state = PrepStepState.COMPLETED
+                    )
+                } else {
+                    it
+                }
+            }
+
+            val finalState = if (targetProfile != null) OneTapPrepOverallState.GAME_READY else OneTapPrepOverallState.BOOST_READY
+            val finalBadge = if (targetProfile != null) "GAME READY ⚡" else "BOOST READY ⚡"
+
+            _oneTapPrepStatus.value = OneTapGamePrepStatus(
+                overallState = finalState,
+                badgeText = finalBadge,
+                targetGameTitle = gameName,
+                steps = completedSteps,
+                freedRamMb = boostRes.freedRamMb,
+                availableRamMb = updatedSnap.ramAvailableMb,
+                thermalStateLabel = _smartThermalStatus.value.thermalLevel.arabicLabel,
+                appliedProfileTitle = targetProfile?.title ?: _performanceMode.value.arabicTitle,
+                timestampMs = System.currentTimeMillis()
+            )
+
+            boosterManager.playTacticalFeedback(isMajorBoost = true)
+            showBanner("✅ $finalBadge — الجهاز جاهز تماماً للعب (${updatedSnap.ramAvailableMb}MB رام متاح • حرارة ${updatedSnap.batteryTempCelsius}°C)")
+            onReadyCallback?.invoke()
+        }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 2. SMART THERMAL MODE & HUD OVERLAYS (الوضع الحراري الذكي والعدادات)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    fun setSmartThermalMode(mode: SmartThermalMode) {
+        updateLowEndConfig { it.copy(smartThermalMode = mode) }
+        recomputeThermalAndAdvisorStates(_telemetry.value, _lowEndConfig.value.copy(smartThermalMode = mode))
+        showBanner("🌡️ الوضع الحراري الذكي: ${mode.arabicTitle}")
+    }
+
+    fun toggleHudOverlayMetric(fps: Boolean? = null, temp: Boolean? = null, ram: Boolean? = null, magnifier: Boolean? = null) {
+        val current = _lowEndConfig.value
+        val nextFps = fps ?: current.fpsOverlayEnabled
+        val nextTemp = temp ?: current.tempOverlayEnabled
+        val nextRam = ram ?: current.ramOverlayEnabled
+        val nextMag = magnifier ?: current.magnifierEnabled
+
+        updateLowEndConfig {
+            it.copy(
+                fpsOverlayEnabled = nextFps,
+                tempOverlayEnabled = nextTemp,
+                ramOverlayEnabled = nextRam,
+                magnifierEnabled = nextMag
+            )
+        }
+
+        val anySystemOverlayWanted = nextFps || nextTemp || nextRam || nextMag
+        if (anySystemOverlayWanted && boosterManager.canDrawSystemOverlays()) {
+            TriggerEventBus.setMasterEngineRunning(true)
+            boosterManager.startOrStopFloatingSidebarService(true)
+        }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 3. NOTIFICATION SHIELD (درع عزل الإشعارات الاحترافي)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    fun toggleNotificationShield() {
+        val next = !_notificationShieldState.value.enabled
+        setNotificationShield(next)
+    }
+
+    fun setNotificationShield(enabled: Boolean) {
+        val state = boosterManager.applyNotificationShield(enabled)
+        _notificationShieldState.value = state
+        TriggerEventBus.updateNotificationShieldState(state)
+        updateLowEndConfig { it.copy(notificationShieldEnabled = enabled) }
+        showBanner(state.statusLabelAr)
+    }
+
+    fun openNotificationPolicyAccessSettings() {
+        boosterManager.openNotificationPolicyAccessSettings()
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 4. PER-GAME PROFILES & QUICK GAME RECONNECT (البروفايلات والعودة السريعة)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    private fun updateActiveSessionForProfile(profile: GameSpaceProfile) {
+        val reconnectState = boosterManager.inspectQuickReconnectState(profile.packageName)
+        val session = ActiveGameSession(
+            profileId = profile.id,
+            gameTitle = profile.title,
+            packageName = profile.packageName,
+            startedAtMs = System.currentTimeMillis(),
+            isInstalledOnDevice = profile.isInstalledOnDevice,
+            reconnectState = reconnectState
+        )
+        _activeGameSession.value = session
+        TriggerEventBus.updateActiveGameSession(session)
+    }
+
+    fun refreshQuickReconnectState() {
+        val profile = _activeGameProfile.value ?: return
+        val updatedInstalled = boosterManager.isPackageInstalled(profile.packageName)
+        val state = boosterManager.inspectQuickReconnectState(profile.packageName)
+        val session = _activeGameSession.value.copy(
+            profileId = profile.id,
+            gameTitle = profile.title,
+            packageName = profile.packageName,
+            isInstalledOnDevice = updatedInstalled,
+            reconnectState = state
+        )
+        _activeGameSession.value = session
+        TriggerEventBus.updateActiveGameSession(session)
+    }
+
+    private suspend fun applyGameProfileInternal(profile: GameSpaceProfile) {
+        _activeGameProfile.value = profile
+        prefsRepo.saveLastActiveProfileId(profile.id)
+
+        _performanceMode.value = profile.recommendedMode
+        TriggerEventBus.updatePerformanceMode(profile.recommendedMode)
+        prefsRepo.savePerformanceMode(profile.recommendedMode)
+
+        val updatedTrigger = _triggerConfig.value.copy(
+            enabled = profile.triggersEnabled,
+            l1XRatio = profile.l1X,
+            l1YRatio = profile.l1Y,
+            l1ActionName = profile.l1ActionAr,
+            r1XRatio = profile.r1X,
+            r1YRatio = profile.r1Y,
+            r1ActionName = profile.r1ActionAr
+        )
+        _triggerConfig.value = updatedTrigger
+        TriggerEventBus.updateTriggerConfig(updatedTrigger)
+        prefsRepo.saveTriggerConfig(updatedTrigger)
+
+        val updatedCrosshair = _crosshairConfig.value.copy(
+            enabledInApp = profile.crosshairEnabled,
+            style = profile.crosshairStyle
+        )
+        _crosshairConfig.value = updatedCrosshair
+        TriggerEventBus.updateCrosshairConfig(updatedCrosshair)
+        prefsRepo.saveCrosshairConfig(updatedCrosshair)
+
+        val updatedSidebar = _edgeSidebarConfig.value.copy(
+            enabledInApp = profile.gamingSidebarEnabled
+        )
+        _edgeSidebarConfig.value = updatedSidebar
+        TriggerEventBus.updateEdgeSidebarConfig(updatedSidebar)
+        prefsRepo.saveEdgeSidebarConfig(updatedSidebar)
+
+        val updatedCloned = _clonedButtonsConfig.value.copy(
+            masterEnabled = profile.clonedButtonsEnabled
+        )
+        _clonedButtonsConfig.value = updatedCloned
+        TriggerEventBus.updateClonedButtonsConfig(updatedCloned)
+        prefsRepo.saveClonedButtonsConfig(updatedCloned)
+
+        val updatedLowEnd = _lowEndConfig.value.copy(
+            smartThermalMode = profile.smartThermalMode,
+            notificationShieldEnabled = profile.notificationShieldEnabled,
+            magnifierEnabled = profile.magnifierEnabled,
+            magnifierZoom = profile.magnifierZoom,
+            mistouchPrevention = profile.touchProtectionEnabled,
+            fpsOverlayEnabled = profile.fpsOverlayEnabled,
+            tempOverlayEnabled = profile.tempOverlayEnabled,
+            ramOverlayEnabled = profile.ramOverlayEnabled,
+            advisorPresetMode = profile.advisorMode
+        )
+        _lowEndConfig.value = updatedLowEnd
+        TriggerEventBus.updateLowEndConfig(updatedLowEnd)
+        prefsRepo.saveLowEndOptimizerConfig(updatedLowEnd)
+
+        val shieldState = boosterManager.applyNotificationShield(profile.notificationShieldEnabled)
+        _notificationShieldState.value = shieldState
+        TriggerEventBus.updateNotificationShieldState(shieldState)
+
+        updateActiveSessionForProfile(profile)
+        recomputeThermalAndAdvisorStates(_telemetry.value, updatedLowEnd)
+    }
+
+    fun applyGameProfile(profile: GameSpaceProfile, showFeedbackBanner: Boolean = true) {
+        viewModelScope.launch {
+            applyGameProfileInternal(profile)
+            if (showFeedbackBanner) {
+                boosterManager.playTacticalFeedback(isMajorBoost = false)
+                showBanner("🎮 تم تطبيق بروفايل (${profile.title}) المخصص وجميع أدواته بنجاح!")
+            }
+        }
+    }
+
+    fun saveOrUpdateGameProfile(updatedProfile: GameSpaceProfile) {
+        viewModelScope.launch {
+            val currentList = _gameCatalog.value.toMutableList()
+            val idx = currentList.indexOfFirst { it.id == updatedProfile.id }
+            val withInstallCheck = updatedProfile.copy(
+                isInstalledOnDevice = boosterManager.isPackageInstalled(updatedProfile.packageName)
+            )
+            if (idx >= 0) {
+                currentList[idx] = withInstallCheck
+            } else {
+                currentList.add(withInstallCheck)
+            }
+            _gameCatalog.value = currentList
+            prefsRepo.savePerGameProfiles(currentList)
+            applyGameProfileInternal(withInstallCheck)
+            showBanner("💾 تم حفظ وتطبيق إعدادات بروفايل (${withInstallCheck.title}) بشكل دائم!")
+        }
+    }
+
+    fun addCustomGameProfile(
+        title: String,
+        packageName: String,
+        genreAr: String,
+        mode: PerformanceMode,
+        targetFps: Int
+    ) {
+        val cleanTitle = title.trim().ifBlank { "لعبة مخصصة جديدة" }
+        val cleanPkg = packageName.trim().ifBlank { "com.custom.game.${System.currentTimeMillis() % 10000}" }
+        val newProfile = GameSpaceProfile(
+            id = "custom_${System.currentTimeMillis()}",
+            title = cleanTitle,
+            packageName = cleanPkg,
+            genreAr = genreAr.trim().ifBlank { "بروفايل لعب مخصص" },
+            recommendedMode = mode,
+            l1ActionAr = "زر تكتيكي يسار (L1)",
+            r1ActionAr = "زر إطلاق سريع يمين (R1)",
+            l1X = 0.22f,
+            l1Y = 0.36f,
+            r1X = 0.80f,
+            r1Y = 0.58f,
+            targetFps = targetFps.coerceIn(30, 144),
+            isInstalledOnDevice = boosterManager.isPackageInstalled(cleanPkg),
+            accentHex = 0xFF00F0FF,
+            smartThermalMode = SmartThermalMode.AUTO_ADAPTIVE,
+            notificationShieldEnabled = true,
+            magnifierEnabled = false,
+            crosshairEnabled = true,
+            touchProtectionEnabled = true,
+            gamingSidebarEnabled = true,
+            fpsOverlayEnabled = true,
+            triggersEnabled = true,
+            advisorMode = AdvisorPresetMode.BALANCED,
+            isCustomAdded = true
+        )
+        saveOrUpdateGameProfile(newProfile)
+    }
+
+    fun duplicateGameProfile(source: GameSpaceProfile) {
+        val copyProfile = source.copy(
+            id = "${source.id}_copy_${System.currentTimeMillis() % 10000}",
+            title = "${source.title} (نسخة مخصصة)",
+            isCustomAdded = true
+        )
+        saveOrUpdateGameProfile(copyProfile)
+    }
+
+    fun resetGameProfileToDefault(profileId: String) {
+        viewModelScope.launch {
+            val defaults = boosterManager.buildGameSpaceCatalog()
+            val defaultMatch = defaults.find { it.id == profileId }
+            val currentList = _gameCatalog.value.toMutableList()
+            if (defaultMatch != null) {
+                val idx = currentList.indexOfFirst { it.id == profileId }
+                if (idx >= 0) {
+                    currentList[idx] = defaultMatch
+                }
+                _gameCatalog.value = currentList
+                prefsRepo.savePerGameProfiles(currentList)
+                applyGameProfileInternal(defaultMatch)
+                showBanner("🔄 تمت استعادة الإعدادات الافتراضية لبروفايل (${defaultMatch.title})")
+            } else {
+                // Custom added profile -> delete it
+                val filtered = currentList.filterNot { it.id == profileId }
+                _gameCatalog.value = filtered
+                prefsRepo.savePerGameProfiles(filtered)
+                filtered.firstOrNull()?.let { applyGameProfileInternal(it) }
+                showBanner("🗑️ تم حذف البروفايل المخصص")
+            }
+        }
+    }
+
+    fun quickReconnectToActiveGame() {
+        val profile = _activeGameProfile.value ?: _gameCatalog.value.firstOrNull()
+        if (profile == null) {
+            _selectedTab.value = RedCoreTab.GAME_SPACE
+            showBanner("اختر لعبة من قائمة البروفايلات أولاً لتفعيل العودة السريعة")
+            return
+        }
+        viewModelScope.launch {
+            applyGameProfileInternal(profile)
+            val launched = boosterManager.quickReconnectOrLaunchGame(profile.packageName)
+            refreshQuickReconnectState()
+            if (launched) {
+                showBanner("⚡ جاري العودة الفورية إلى ${profile.title} مع تفعيل البروفايل...")
+            } else {
+                showBanner("✅ تم تفعيل كامل إعدادات بروفايل (${profile.title})! اللعبة غير مثبتة على هذا الجهاز، يمكنك تجربة الأدوات الآن")
+            }
+        }
+    }
+
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+    // 5. AUTO SETTINGS ADVISOR (مستشار إعدادات الجرافيك الذكي)
+    // ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+
+    fun selectAdvisorPresetMode(mode: AdvisorPresetMode) {
+        updateLowEndConfig { it.copy(advisorPresetMode = mode) }
+        val rec = telemetryEngine.buildAutoSettingsRecommendation(
+            telemetry = _telemetry.value,
+            mode = mode,
+            gameTitle = _activeGameProfile.value?.title
+        )
+        _autoSettingsRecommendation.value = rec
+    }
+
+    fun applyAdvisorRecommendedToolsNow() {
+        val mode = _lowEndConfig.value.advisorPresetMode
+        val rec = _autoSettingsRecommendation.value
+        val targetPerf = when (mode) {
+            AdvisorPresetMode.BEST_PERFORMANCE -> PerformanceMode.DIABLO
+            AdvisorPresetMode.BALANCED -> PerformanceMode.RISE
+            AdvisorPresetMode.BEST_VISUAL_QUALITY -> PerformanceMode.BALANCE
+        }
+        val targetThermal = when (mode) {
+            AdvisorPresetMode.BEST_PERFORMANCE -> SmartThermalMode.AUTO_ADAPTIVE
+            AdvisorPresetMode.BALANCED -> SmartThermalMode.AUTO_ADAPTIVE
+            AdvisorPresetMode.BEST_VISUAL_QUALITY -> SmartThermalMode.ECO_STABILITY
+        }
+        setPerformanceMode(targetPerf)
+        updateLowEndConfig {
+            it.copy(
+                smartThermalMode = targetThermal,
+                gpuForce4xMsaaOff = mode != AdvisorPresetMode.BEST_VISUAL_QUALITY,
+                shadowDownscale = mode != AdvisorPresetMode.BEST_VISUAL_QUALITY,
+                resolutionScalePreset = rec.resolutionRecommendation
+            )
+        }
+        showBanner("✅ تم تطبيق توصيات مستشار الإعدادات (${mode.arabicTitle}) وضبط محرك الأداء والحرارة!")
     }
 
     fun cycleVisionFilter() {
@@ -467,6 +1299,12 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
         val entries = AudioRadarPreset.entries
         val next = entries[(_lowEndConfig.value.audioRadarPreset.ordinal + 1) % entries.size]
         selectAudioRadarPreset(next)
+    }
+
+    fun cycleVoiceModPreset() {
+        val entries = VoiceModPreset.entries
+        val next = entries[(_lowEndConfig.value.voiceModPreset.ordinal + 1) % entries.size]
+        selectVoiceModPreset(next)
     }
 
     fun testLivePingNow() {
@@ -484,30 +1322,20 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun boostAndLaunchGame(profile: GameSpaceProfile) {
-        _activeGameProfile.value = profile
-        setPerformanceMode(profile.recommendedMode)
-        updateTriggerConfig {
-            it.copy(
-                enabled = true,
-                l1XRatio = profile.l1X,
-                l1YRatio = profile.l1Y,
-                l1ActionName = profile.l1ActionAr,
-                r1XRatio = profile.r1X,
-                r1YRatio = profile.r1Y,
-                r1ActionName = profile.r1ActionAr
-            )
-        }
-        runSuperBoostNow {
-            val launched = boosterManager.launchPackageOrOpenSettings(profile.packageName)
+        runOneTapGamePreparation(targetProfile = profile) {
+            val launched = boosterManager.quickReconnectOrLaunchGame(profile.packageName)
+            refreshQuickReconnectState()
             if (!launched) {
                 _selectedTab.value = RedCoreTab.SHOULDER_TRIGGERS
-                showBanner("تم تطبيق إعدادات ${profile.title} وتفريغ الرام! جرب أزرار L1/R1 الآن في ميدان التدريب")
+                showBanner("⚡ GAME READY — تم تجهيز وتطبيق بروفايل ${profile.title}! جرب أزرار L1/R1 والأدوات الآن")
             }
         }
     }
 
     override fun onCleared() {
         telemetryEngine.stopFrameMonitor()
+        voiceChangerEngine.release()
+        boosterManager.releaseThermalHeavyEffects()
         l1InAppBurstJob?.cancel()
         r1InAppBurstJob?.cancel()
         super.onCleared()

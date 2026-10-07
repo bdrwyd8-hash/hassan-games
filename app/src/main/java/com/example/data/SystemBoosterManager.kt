@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.app.ActivityManager
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.ApplicationInfo
@@ -14,11 +15,16 @@ import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
 import android.provider.Settings
+import com.example.model.AdvisorPresetMode
 import com.example.model.AudioRadarPreset
 import com.example.model.BoostResult
+import com.example.model.CrosshairStyle
 import com.example.model.GameSpaceProfile
 import com.example.model.InstalledAppProcess
+import com.example.model.NotificationShieldState
 import com.example.model.PerformanceMode
+import com.example.model.QuickReconnectState
+import com.example.model.SmartThermalMode
 import com.example.model.VoiceModPreset
 import com.example.service.FloatingGameSidebarService
 import java.io.File
@@ -30,9 +36,15 @@ import kotlinx.coroutines.withContext
 class SystemBoosterManager(private val context: Context) {
 
     private val activityManager = context.getSystemService(Context.ACTIVITY_SERVICE) as ActivityManager
+    private val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as? NotificationManager
+    private val audioManager = context.getSystemService(Context.AUDIO_SERVICE) as? AudioManager
     private val packageManager = context.packageManager
     private val stoppedPackagesSession = mutableSetOf<String>()
+    private val launchedPackagesSession = mutableSetOf<String>()
     private var loudnessEnhancer: LoudnessEnhancer? = null
+
+    private var savedInterruptionFilter: Int? = null
+    private var savedNotificationStreamVolume: Int? = null
 
     fun canDrawSystemOverlays(): Boolean {
         return try {
@@ -73,12 +85,14 @@ class SystemBoosterManager(private val context: Context) {
 
     fun applyAudioRadarPreset(preset: AudioRadarPreset) {
         try {
-            if (loudnessEnhancer == null) {
-                loudnessEnhancer = LoudnessEnhancer(0)
-            }
             if (preset == AudioRadarPreset.NORMAL) {
                 loudnessEnhancer?.enabled = false
+                loudnessEnhancer?.release()
+                loudnessEnhancer = null
             } else {
+                if (loudnessEnhancer == null) {
+                    loudnessEnhancer = LoudnessEnhancer(0)
+                }
                 loudnessEnhancer?.setTargetGain(preset.boostDb * 100)
                 loudnessEnhancer?.enabled = true
             }
@@ -87,11 +101,26 @@ class SystemBoosterManager(private val context: Context) {
         playTacticalFeedback(isMajorBoost = false)
     }
 
-    fun playVoiceChangerSample(preset: VoiceModPreset) {
+    fun releaseThermalHeavyEffects() {
         try {
-            val tg = ToneGenerator(AudioManager.STREAM_MUSIC, 70)
-            tg.startTone(preset.toneCode, 140)
+            loudnessEnhancer?.enabled = false
+            loudnessEnhancer?.release()
+            loudnessEnhancer = null
         } catch (_: Exception) {
+        }
+    }
+
+    fun playVoiceChangerSample(preset: VoiceModPreset) {
+        var tg: ToneGenerator? = null
+        try {
+            tg = ToneGenerator(AudioManager.STREAM_MUSIC, 60)
+            tg.startTone(preset.toneCode, 90)
+        } catch (_: Exception) {
+        } finally {
+            try {
+                tg?.release()
+            } catch (_: Exception) {
+            }
         }
         playTacticalFeedback(isMajorBoost = false)
     }
@@ -210,20 +239,21 @@ class SystemBoosterManager(private val context: Context) {
         var estimatedFreedFromAppsMb = 0L
         var estimatedCleanedCacheMb = (cleanedBytes / (1024f * 1024f))
 
-        val targets = apps.filter { !it.isWhitelisted && !whitelistedPackages.contains(it.packageName) && !it.isStopped }
+        val candidateTargets = apps.filter {
+            !it.isWhitelisted && !whitelistedPackages.contains(it.packageName) && !it.isStopped && !it.isSystemApp
+        }
+        val targets = if (isAutoBoost) candidateTargets.take(8) else candidateTargets.take(18)
         for (target in targets) {
             try {
                 activityManager.killBackgroundProcesses(target.packageName)
                 stoppedPackagesSession.add(target.packageName)
+                launchedPackagesSession.remove(target.packageName)
                 stoppedNames.add(target.appName)
                 estimatedFreedFromAppsMb += (target.estimatedRamMb * 0.65f).toLong()
                 estimatedCleanedCacheMb += target.cacheSizeMb
             } catch (_: Exception) {
             }
         }
-
-        System.gc()
-        Runtime.getRuntime().gc()
 
         val afterMem = ActivityManager.MemoryInfo()
         activityManager.getMemoryInfo(afterMem)
@@ -249,6 +279,160 @@ class SystemBoosterManager(private val context: Context) {
         )
     }
 
+    /**
+     * Official Android Notification Shield (درع منع الإشعارات المشتتة أثناء اللعب).
+     * Uses NotificationManager interruption filter (when granted) + notification stream muting,
+     * and restores the exact previous state when disabled or when the game session ends.
+     */
+    fun hasNotificationPolicyAccess(): Boolean {
+        return try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                notificationManager?.isNotificationPolicyAccessGranted == true
+            } else {
+                true
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
+    fun openNotificationPolicyAccessSettings() {
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                val intent = Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                }
+                context.startActivity(intent)
+            }
+        } catch (_: Exception) {
+        }
+    }
+
+    fun applyNotificationShield(enable: Boolean): NotificationShieldState {
+        val hasDndPerm = hasNotificationPolicyAccess()
+        var sysDndApplied = false
+        var streamMuted = false
+
+        if (enable) {
+            // 1. Apply official DND Priority filter if permission is granted
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && hasDndPerm && notificationManager != null) {
+                try {
+                    if (savedInterruptionFilter == null) {
+                        savedInterruptionFilter = notificationManager.currentInterruptionFilter
+                    }
+                    notificationManager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_PRIORITY)
+                    sysDndApplied = true
+                } catch (_: Exception) {
+                }
+            }
+            // 2. Safely mute notification audio stream (fallback & reinforcement)
+            if (audioManager != null) {
+                try {
+                    if (savedNotificationStreamVolume == null) {
+                        savedNotificationStreamVolume = audioManager.getStreamVolume(AudioManager.STREAM_NOTIFICATION)
+                    }
+                    audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, 0, 0)
+                    streamMuted = true
+                } catch (_: Exception) {
+                }
+            }
+            val label = if (sysDndApplied) {
+                "🛡️ درع الإشعارات نشط (عزل كامل DND + كتم التنبيهات)"
+            } else {
+                "🛡️ درع الإشعارات نشط (كتم التنبيهات وحظر الإزعاج داخل جلسة اللعب)"
+            }
+            return NotificationShieldState(
+                enabled = true,
+                hasDndPolicyPermission = hasDndPerm,
+                systemDndActive = sysDndApplied,
+                notificationVolumeMuted = streamMuted,
+                statusLabelAr = label
+            )
+        } else {
+            // Restore previous system DND interruption filter
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M && hasDndPerm && notificationManager != null) {
+                try {
+                    savedInterruptionFilter?.let { prev ->
+                        notificationManager.setInterruptionFilter(prev)
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            savedInterruptionFilter = null
+
+            // Restore previous notification stream volume
+            if (audioManager != null) {
+                try {
+                    savedNotificationStreamVolume?.let { prevVol ->
+                        audioManager.setStreamVolume(AudioManager.STREAM_NOTIFICATION, prevVol, 0)
+                    }
+                } catch (_: Exception) {
+                }
+            }
+            savedNotificationStreamVolume = null
+
+            return NotificationShieldState(
+                enabled = false,
+                hasDndPolicyPermission = hasDndPerm,
+                systemDndActive = false,
+                notificationVolumeMuted = false,
+                statusLabelAr = "متوقف (الإشعارات في الوضع الطبيعي)"
+            )
+        }
+    }
+
+    /**
+     * Applies target media volume percent if configured for a game session.
+     */
+    fun applyGameMediaVolumePercent(percent: Int) {
+        val am = audioManager ?: return
+        try {
+            val maxVol = am.getStreamMaxVolume(AudioManager.STREAM_MUSIC).coerceAtLeast(1)
+            val targetVol = ((maxVol * percent.coerceIn(10, 100)) / 100f).roundToInt().coerceIn(1, maxVol)
+            am.setStreamVolume(AudioManager.STREAM_MUSIC, targetVol, 0)
+        } catch (_: Exception) {
+        }
+    }
+
+    /**
+     * Quick Game Reconnect state inspector & launcher.
+     */
+    fun inspectQuickReconnectState(packageName: String): QuickReconnectState {
+        if (packageName.isBlank()) return QuickReconnectState.NO_SESSION
+        val installed = isPackageInstalled(packageName)
+        if (!installed) {
+            return QuickReconnectState.PROFILE_READY_SIMULATION
+        }
+        val wasStopped = stoppedPackagesSession.contains(packageName)
+        val wasLaunched = launchedPackagesSession.contains(packageName)
+        return when {
+            wasLaunched && !wasStopped -> QuickReconnectState.IN_BACKGROUND_READY
+            else -> QuickReconnectState.CLOSED_NEEDS_RELAUNCH
+        }
+    }
+
+    fun quickReconnectOrLaunchGame(packageName: String): Boolean {
+        if (packageName.isBlank()) return false
+        return try {
+            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
+            if (launchIntent != null) {
+                launchIntent.addFlags(
+                    Intent.FLAG_ACTIVITY_NEW_TASK or
+                        Intent.FLAG_ACTIVITY_SINGLE_TOP or
+                        Intent.FLAG_ACTIVITY_RESET_TASK_IF_NEEDED
+                )
+                context.startActivity(launchIntent)
+                launchedPackagesSession.add(packageName)
+                stoppedPackagesSession.remove(packageName)
+                true
+            } else {
+                false
+            }
+        } catch (_: Exception) {
+            false
+        }
+    }
+
     fun buildGameSpaceCatalog(): List<GameSpaceProfile> {
         val defaultCatalog = listOf(
             GameSpaceProfile(
@@ -264,7 +448,21 @@ class SystemBoosterManager(private val context: Context) {
                 r1X = 0.81f,
                 r1Y = 0.58f,
                 targetFps = 90,
-                accentHex = 0xFFFFB300
+                accentHex = 0xFFFFB300,
+                smartThermalMode = SmartThermalMode.AUTO_ADAPTIVE,
+                notificationShieldEnabled = true,
+                magnifierEnabled = true,
+                magnifierZoom = 2.2f,
+                crosshairEnabled = true,
+                crosshairStyle = CrosshairStyle.CIRCLE_DOT,
+                touchProtectionEnabled = true,
+                gamingSidebarEnabled = true,
+                fpsOverlayEnabled = true,
+                tempOverlayEnabled = true,
+                ramOverlayEnabled = false,
+                triggersEnabled = true,
+                clonedButtonsEnabled = true,
+                advisorMode = AdvisorPresetMode.BEST_PERFORMANCE
             ),
             GameSpaceProfile(
                 id = "free_fire",
@@ -279,7 +477,20 @@ class SystemBoosterManager(private val context: Context) {
                 r1X = 0.79f,
                 r1Y = 0.62f,
                 targetFps = 90,
-                accentHex = 0xFFFF1E38
+                accentHex = 0xFFFF1E38,
+                smartThermalMode = SmartThermalMode.AUTO_ADAPTIVE,
+                notificationShieldEnabled = true,
+                magnifierEnabled = false,
+                crosshairEnabled = true,
+                crosshairStyle = CrosshairStyle.RED_DOT,
+                touchProtectionEnabled = true,
+                gamingSidebarEnabled = true,
+                fpsOverlayEnabled = true,
+                tempOverlayEnabled = false,
+                ramOverlayEnabled = true,
+                triggersEnabled = true,
+                clonedButtonsEnabled = true,
+                advisorMode = AdvisorPresetMode.BEST_PERFORMANCE
             ),
             GameSpaceProfile(
                 id = "cod_mobile",
@@ -294,7 +505,21 @@ class SystemBoosterManager(private val context: Context) {
                 r1X = 0.82f,
                 r1Y = 0.54f,
                 targetFps = 120,
-                accentHex = 0xFF00F0FF
+                accentHex = 0xFF00F0FF,
+                smartThermalMode = SmartThermalMode.AUTO_ADAPTIVE,
+                notificationShieldEnabled = true,
+                magnifierEnabled = true,
+                magnifierZoom = 2.0f,
+                crosshairEnabled = true,
+                crosshairStyle = CrosshairStyle.TACTICAL_CROSS,
+                touchProtectionEnabled = true,
+                gamingSidebarEnabled = true,
+                fpsOverlayEnabled = true,
+                tempOverlayEnabled = true,
+                ramOverlayEnabled = true,
+                triggersEnabled = true,
+                clonedButtonsEnabled = false,
+                advisorMode = AdvisorPresetMode.BEST_PERFORMANCE
             ),
             GameSpaceProfile(
                 id = "efootball",
@@ -309,14 +534,26 @@ class SystemBoosterManager(private val context: Context) {
                 r1X = 0.84f,
                 r1Y = 0.64f,
                 targetFps = 60,
-                accentHex = 0xFF00E676
+                accentHex = 0xFF00E676,
+                smartThermalMode = SmartThermalMode.AUTO_ADAPTIVE,
+                notificationShieldEnabled = true,
+                magnifierEnabled = false,
+                crosshairEnabled = false,
+                touchProtectionEnabled = true,
+                gamingSidebarEnabled = true,
+                fpsOverlayEnabled = true,
+                tempOverlayEnabled = false,
+                ramOverlayEnabled = false,
+                triggersEnabled = true,
+                clonedButtonsEnabled = true,
+                advisorMode = AdvisorPresetMode.BALANCED
             ),
             GameSpaceProfile(
                 id = "genshin",
                 title = "Genshin Impact (جينشين إمباكت)",
                 packageName = "com.miHoYo.GenshinImpact",
                 genreAr = "عالم مفتوح • جرافيك ثقيل",
-                recommendedMode = PerformanceMode.DIABLO,
+                recommendedMode = PerformanceMode.RISE,
                 l1ActionAr = "مهارة عنصرية (Elemental Skill)",
                 r1ActionAr = "هجوم سريع متتالي (Combo Attack)",
                 l1X = 0.70f,
@@ -324,7 +561,19 @@ class SystemBoosterManager(private val context: Context) {
                 r1X = 0.85f,
                 r1Y = 0.68f,
                 targetFps = 60,
-                accentHex = 0xFFB388FF
+                accentHex = 0xFFB388FF,
+                smartThermalMode = SmartThermalMode.ECO_STABILITY,
+                notificationShieldEnabled = true,
+                magnifierEnabled = false,
+                crosshairEnabled = false,
+                touchProtectionEnabled = true,
+                gamingSidebarEnabled = true,
+                fpsOverlayEnabled = true,
+                tempOverlayEnabled = true,
+                ramOverlayEnabled = true,
+                triggersEnabled = true,
+                clonedButtonsEnabled = false,
+                advisorMode = AdvisorPresetMode.BALANCED
             ),
             GameSpaceProfile(
                 id = "roblox",
@@ -339,7 +588,19 @@ class SystemBoosterManager(private val context: Context) {
                 r1X = 0.76f,
                 r1Y = 0.52f,
                 targetFps = 60,
-                accentHex = 0xFFFF475E
+                accentHex = 0xFFFF475E,
+                smartThermalMode = SmartThermalMode.AUTO_ADAPTIVE,
+                notificationShieldEnabled = true,
+                magnifierEnabled = false,
+                crosshairEnabled = true,
+                touchProtectionEnabled = true,
+                gamingSidebarEnabled = true,
+                fpsOverlayEnabled = true,
+                tempOverlayEnabled = false,
+                ramOverlayEnabled = false,
+                triggersEnabled = true,
+                clonedButtonsEnabled = true,
+                advisorMode = AdvisorPresetMode.BALANCED
             )
         )
 
@@ -358,18 +619,7 @@ class SystemBoosterManager(private val context: Context) {
     }
 
     fun launchPackageOrOpenSettings(packageName: String): Boolean {
-        return try {
-            val launchIntent = packageManager.getLaunchIntentForPackage(packageName)
-            if (launchIntent != null) {
-                launchIntent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-                context.startActivity(launchIntent)
-                true
-            } else {
-                false
-            }
-        } catch (_: Exception) {
-            false
-        }
+        return quickReconnectOrLaunchGame(packageName)
     }
 
     fun openAppDetailsSettings(packageName: String) {
@@ -405,24 +655,15 @@ class SystemBoosterManager(private val context: Context) {
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                 if (isMajorBoost) {
                     vibrator?.vibrate(
-                        VibrationEffect.createWaveform(longArrayOf(0, 45, 40, 80), -1)
+                        VibrationEffect.createWaveform(longArrayOf(0, 35, 30, 55), -1)
                     )
                 } else {
-                    vibrator?.vibrate(VibrationEffect.createOneShot(20L, 180))
+                    vibrator?.vibrate(VibrationEffect.createOneShot(16L, 150))
                 }
             } else {
                 @Suppress("DEPRECATION")
-                vibrator?.vibrate(if (isMajorBoost) 90L else 20L)
+                vibrator?.vibrate(if (isMajorBoost) 60L else 16L)
             }
-        } catch (_: Exception) {
-        }
-
-        try {
-            val tg = ToneGenerator(AudioManager.STREAM_MUSIC, 60)
-            tg.startTone(
-                if (isMajorBoost) ToneGenerator.TONE_PROP_PROMPT else ToneGenerator.TONE_PROP_BEEP,
-                if (isMajorBoost) 120 else 30
-            )
         } catch (_: Exception) {
         }
     }

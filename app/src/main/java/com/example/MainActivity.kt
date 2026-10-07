@@ -41,6 +41,7 @@ import androidx.compose.material3.NavigationRailItemDefaults
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
@@ -80,9 +81,22 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                RedCoreGameSpaceApp(viewModel = viewModel)
+                RedCoreGameSpaceApp(
+                    viewModel = viewModel,
+                    onExitApp = { finishAndRemoveTask() }
+                )
             }
         }
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.setAppInForeground(true)
+    }
+
+    override fun onStop() {
+        viewModel.setAppInForeground(false)
+        super.onStop()
     }
 
     override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
@@ -119,17 +133,26 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-fun RedCoreGameSpaceApp(viewModel: RedCoreViewModel) {
+fun RedCoreGameSpaceApp(
+    viewModel: RedCoreViewModel,
+    onExitApp: () -> Unit = {}
+) {
     val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
     val performanceMode by viewModel.performanceMode.collectAsStateWithLifecycle()
     val triggerConfig by viewModel.triggerConfig.collectAsStateWithLifecycle()
     val crosshairConfig by viewModel.crosshairConfig.collectAsStateWithLifecycle()
     val edgeSidebarConfig by viewModel.edgeSidebarConfig.collectAsStateWithLifecycle()
     val lowEndConfig by viewModel.lowEndConfig.collectAsStateWithLifecycle()
+    val clonedButtonsConfig by viewModel.clonedButtonsConfig.collectAsStateWithLifecycle()
     val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
     val backgroundApps by viewModel.backgroundApps.collectAsStateWithLifecycle()
     val gameCatalog by viewModel.gameCatalog.collectAsStateWithLifecycle()
     val activeGameProfile by viewModel.activeGameProfile.collectAsStateWithLifecycle()
+    val activeGameSession by viewModel.activeGameSession.collectAsStateWithLifecycle()
+    val oneTapPrepStatus by viewModel.oneTapPrepStatus.collectAsStateWithLifecycle()
+    val smartThermalStatus by viewModel.smartThermalStatus.collectAsStateWithLifecycle()
+    val notificationShieldState by viewModel.notificationShieldState.collectAsStateWithLifecycle()
+    val autoSettingsRecommendation by viewModel.autoSettingsRecommendation.collectAsStateWithLifecycle()
     val isBoosting by viewModel.isBoosting.collectAsStateWithLifecycle()
     val boostProgress by viewModel.boostProgress.collectAsStateWithLifecycle()
     val boostStageText by viewModel.boostStageText.collectAsStateWithLifecycle()
@@ -137,10 +160,25 @@ fun RedCoreGameSpaceApp(viewModel: RedCoreViewModel) {
     val statusBannerMessage by viewModel.statusBannerMessage.collectAsStateWithLifecycle()
     val canDrawOverlays by viewModel.canDrawOverlays.collectAsStateWithLifecycle()
 
+    val isMasterRunning by viewModel.isMasterEngineRunning.collectAsStateWithLifecycle()
+    val isLiveMicActive by viewModel.isLiveMicActive.collectAsStateWithLifecycle()
+    val isRecordingVoiceClip by viewModel.isRecordingVoiceClip.collectAsStateWithLifecycle()
+    val isPlayingVoiceClip by viewModel.isPlayingVoiceClip.collectAsStateWithLifecycle()
+    val micInputLevel by viewModel.micInputLevel.collectAsStateWithLifecycle()
+    val voiceStatusText by viewModel.voiceStatusText.collectAsStateWithLifecycle()
+    val voiceNoiseGateEnabled by viewModel.voiceNoiseGateEnabled.collectAsStateWithLifecycle()
+    val selectedVoiceDemoPhraseIndex by viewModel.selectedVoiceDemoPhraseIndex.collectAsStateWithLifecycle()
+
     val l1Pressed by TriggerEventBus.l1Pressed.collectAsState()
     val r1Pressed by TriggerEventBus.r1Pressed.collectAsState()
     val isInAppSidebarOpen by TriggerEventBus.isInAppSidebarOpen.collectAsState()
     val isSystemOverlayRunning by TriggerEventBus.isOverlayServiceRunning.collectAsState()
+
+    LaunchedEffect(Unit) {
+        TriggerEventBus.shutdownAndExitRequests.collect {
+            viewModel.stopAllBackgroundWorkAndExit(onExitApp)
+        }
+    }
 
     // Ensure Back press closes the floating sidebar first, or returns to Command Center
     if (isInAppSidebarOpen) {
@@ -241,7 +279,43 @@ fun RedCoreGameSpaceApp(viewModel: RedCoreViewModel) {
                                         onTestNetworkPing = viewModel::testLivePingNow,
                                         onOpenEdgeSidebar = { viewModel.setInAppSidebarExpanded(true) },
                                         onEnableSystemFloatingBar = viewModel::activateOrToggleSystemFloatingSidebar,
-                                        isSystemOverlayRunning = isSystemOverlayRunning
+                                        isSystemOverlayRunning = isSystemOverlayRunning,
+                                        onRunCoolDown = viewModel::runCpuCoolDownNow,
+                                        isMasterRunning = isMasterRunning,
+                                        onToggleMasterStartOrExit = {
+                                            viewModel.toggleMasterStartOrStopAndExit(onExitApp)
+                                        },
+                                        isLiveMicActive = isLiveMicActive,
+                                        isRecordingClip = isRecordingVoiceClip,
+                                        isPlayingClip = isPlayingVoiceClip,
+                                        micInputLevel = micInputLevel,
+                                        voiceStatusText = voiceStatusText,
+                                        noiseGateEnabled = voiceNoiseGateEnabled,
+                                        hasMicPermission = viewModel::hasMicrophonePermission,
+                                        onSelectVoicePreset = viewModel::selectVoiceModPreset,
+                                        onToggleLiveMic = viewModel::toggleLiveMicrophoneVoiceChanger,
+                                        onStartOrStopClipTest = viewModel::startOrStopVoiceTestRecording,
+                                        onReplayRecordedClip = viewModel::replayRecordedVoiceSample,
+                                        onToggleNoiseGate = viewModel::setVoiceNoiseGate,
+                                        selectedDemoPhraseIndex = selectedVoiceDemoPhraseIndex,
+                                        onPlayReadyDemoWithoutMic = viewModel::playReadyVoiceSampleWithoutMic,
+                                        oneTapPrepStatus = oneTapPrepStatus,
+                                        activeGameTitle = activeGameProfile?.title,
+                                        onRunOneTapPrep = { viewModel.runOneTapGamePreparation() },
+                                        activeSession = activeGameSession,
+                                        onQuickReconnect = viewModel::quickReconnectToActiveGame,
+                                        smartThermalStatus = smartThermalStatus,
+                                        notificationShieldState = notificationShieldState,
+                                        onSelectThermalMode = viewModel::setSmartThermalMode,
+                                        onToggleNotificationShield = viewModel::toggleNotificationShield,
+                                        onOpenDndPermissionSettings = viewModel::openNotificationPolicyAccessSettings,
+                                        onToggleHudMetric = viewModel::toggleHudOverlayMetric,
+                                        onUpdateMagnifierZoom = { zoom ->
+                                            viewModel.updateLowEndConfig { it.copy(magnifierZoom = zoom) }
+                                        },
+                                        autoSettingsRecommendation = autoSettingsRecommendation,
+                                        onSelectAdvisorMode = viewModel::selectAdvisorPresetMode,
+                                        onApplyAdvisorRecommendations = viewModel::applyAdvisorRecommendedToolsNow
                                     )
                                 }
 
@@ -253,7 +327,13 @@ fun RedCoreGameSpaceApp(viewModel: RedCoreViewModel) {
                                         onSimulateHardwareTrigger = { btn, isDown ->
                                             viewModel.handleInAppVolumeTrigger(btn, isDown)
                                         },
-                                        onOpenAccessibilitySettings = viewModel::openAccessibilitySettings
+                                        onOpenAccessibilitySettings = viewModel::openAccessibilitySettings,
+                                        clonedButtonsConfig = clonedButtonsConfig,
+                                        onUpdateClonedButtonsConfig = viewModel::updateClonedButtonsConfig,
+                                        onToggleClonedButtonsOverlay = viewModel::activateOrToggleClonedButtonsOverlay,
+                                        onSimulateClonedTap = { btn, isDown ->
+                                            viewModel.triggerClonedButtonInApp(btn, isDown)
+                                        }
                                     )
                                 }
 
@@ -289,35 +369,51 @@ fun RedCoreGameSpaceApp(viewModel: RedCoreViewModel) {
                                         onEnableSystemFloatingSidebar = viewModel::activateOrToggleSystemFloatingSidebar,
                                         onSelectAudioRadar = viewModel::selectAudioRadarPreset,
                                         onSelectVoiceMod = viewModel::selectVoiceModPreset,
-                                        onOpenAccessibilityForOverlay = viewModel::openAccessibilitySettings
+                                        onOpenAccessibilityForOverlay = viewModel::openAccessibilitySettings,
+                                        isLiveMicActive = isLiveMicActive,
+                                        isRecordingClip = isRecordingVoiceClip,
+                                        isPlayingClip = isPlayingVoiceClip,
+                                        micInputLevel = micInputLevel,
+                                        voiceStatusText = voiceStatusText,
+                                        noiseGateEnabled = voiceNoiseGateEnabled,
+                                        hasMicPermission = viewModel::hasMicrophonePermission,
+                                        onToggleLiveMic = viewModel::toggleLiveMicrophoneVoiceChanger,
+                                        onStartOrStopClipTest = viewModel::startOrStopVoiceTestRecording,
+                                        onReplayRecordedClip = viewModel::replayRecordedVoiceSample,
+                                        onToggleNoiseGate = viewModel::setVoiceNoiseGate,
+                                        selectedDemoPhraseIndex = selectedVoiceDemoPhraseIndex,
+                                        onPlayReadyDemoWithoutMic = viewModel::playReadyVoiceSampleWithoutMic,
+                                        smartThermalStatus = smartThermalStatus,
+                                        notificationShieldState = notificationShieldState,
+                                        onSelectThermalMode = viewModel::setSmartThermalMode,
+                                        onToggleNotificationShield = viewModel::toggleNotificationShield,
+                                        onOpenDndPermissionSettings = viewModel::openNotificationPolicyAccessSettings,
+                                        onToggleHudMetric = viewModel::toggleHudOverlayMetric,
+                                        onUpdateMagnifierZoom = { zoom ->
+                                            viewModel.updateLowEndConfig { it.copy(magnifierZoom = zoom) }
+                                        },
+                                        autoSettingsRecommendation = autoSettingsRecommendation,
+                                        onSelectAdvisorMode = viewModel::selectAdvisorPresetMode,
+                                        onApplyAdvisorRecommendations = viewModel::applyAdvisorRecommendedToolsNow
                                     )
                                 }
 
                                 RedCoreTab.GAME_SPACE -> {
                                     GameSpaceLobbyScreen(
                                         gameCatalog = gameCatalog,
-                                        installedApps = backgroundApps,
-                                        activeGameProfile = activeGameProfile,
-                                        isBoosting = isBoosting,
-                                        onBoostAndLaunchGame = viewModel::boostAndLaunchGame,
-                                        onBoostAndLaunchInstalledApp = { app ->
-                                            val dynamicProfile = GameSpaceProfile(
-                                                id = app.packageName,
-                                                title = app.appName,
-                                                packageName = app.packageName,
-                                                genreAr = "تطبيق مثبت على الجهاز",
-                                                recommendedMode = performanceMode,
-                                                l1ActionAr = triggerConfig.l1ActionName,
-                                                r1ActionAr = triggerConfig.r1ActionName,
-                                                l1X = triggerConfig.l1XRatio,
-                                                l1Y = triggerConfig.l1YRatio,
-                                                r1X = triggerConfig.r1XRatio,
-                                                r1Y = triggerConfig.r1YRatio,
-                                                targetFps = telemetry.displayRefreshRateHz,
-                                                isInstalledOnDevice = true
-                                            )
-                                            viewModel.boostAndLaunchGame(dynamicProfile)
-                                        }
+                                        activeProfile = activeGameProfile,
+                                        activeSession = activeGameSession,
+                                        oneTapPrepStatus = oneTapPrepStatus,
+                                        onLaunchWithProfile = viewModel::boostAndLaunchGame,
+                                        onApplyProfileOnly = { profile ->
+                                            viewModel.applyGameProfile(profile)
+                                        },
+                                        onSaveOrUpdateProfile = viewModel::saveOrUpdateGameProfile,
+                                        onAddCustomGame = viewModel::addCustomGameProfile,
+                                        onDuplicateProfile = viewModel::duplicateGameProfile,
+                                        onResetProfile = viewModel::resetGameProfileToDefault,
+                                        onRunOneTapPrep = { viewModel.runOneTapGamePreparation() },
+                                        onQuickReconnect = viewModel::quickReconnectToActiveGame
                                     )
                                 }
                             }
@@ -356,7 +452,21 @@ fun RedCoreGameSpaceApp(viewModel: RedCoreViewModel) {
                     onSwapSidebarEdge = {
                         viewModel.updateEdgeSidebarConfig { it.copy(isRightEdge = !it.isRightEdge) }
                     },
-                    onActivateSystemFloatingBar = viewModel::activateOrToggleSystemFloatingSidebar
+                    onActivateSystemFloatingBar = viewModel::activateOrToggleSystemFloatingSidebar,
+                    onRunCoolDown = viewModel::runCpuCoolDownNow,
+                    clonedButtonsConfig = clonedButtonsConfig,
+                    onToggleClonedButtonsOverlay = viewModel::activateOrToggleClonedButtonsOverlay,
+                    onToggleClonedButtonsLock = {
+                        viewModel.updateClonedButtonsConfig {
+                            it.copy(isLockedForPlay = !it.isLockedForPlay)
+                        }
+                    },
+                    isLiveMicActive = isLiveMicActive,
+                    onCycleVoiceMod = viewModel::cycleVoiceModPreset,
+                    onToggleLiveMic = viewModel::toggleLiveMicrophoneVoiceChanger,
+                    onShutdownAndExitApp = {
+                        viewModel.stopAllBackgroundWorkAndExit(onExitApp)
+                    }
                 )
             }
         }

@@ -77,11 +77,14 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.ClonedButtonsConfig
+import com.example.model.ClonedTouchButton
 import com.example.model.CrosshairConfig
 import com.example.model.ShoulderTriggerConfig
 import com.example.model.TriggerFireMode
 import com.example.service.TriggerButtonType
 import com.example.service.TriggerEventBus
+import com.example.ui.components.ClonedButtonsStudioCard
 import com.example.ui.components.CrosshairCanvasView
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
@@ -105,7 +108,11 @@ fun ShoulderTriggersScreen(
     crosshairConfig: CrosshairConfig,
     onUpdateConfig: ((ShoulderTriggerConfig) -> ShoulderTriggerConfig) -> Unit,
     onSimulateHardwareTrigger: (TriggerButtonType, Boolean) -> Unit,
-    onOpenAccessibilitySettings: () -> Unit
+    onOpenAccessibilitySettings: () -> Unit,
+    clonedButtonsConfig: ClonedButtonsConfig = ClonedButtonsConfig(),
+    onUpdateClonedButtonsConfig: ((ClonedButtonsConfig) -> ClonedButtonsConfig) -> Unit = {},
+    onToggleClonedButtonsOverlay: () -> Unit = {},
+    onSimulateClonedTap: (ClonedTouchButton, Boolean) -> Unit = { _, _ -> }
 ) {
     val l1Pressed by TriggerEventBus.l1Pressed.collectAsState()
     val r1Pressed by TriggerEventBus.r1Pressed.collectAsState()
@@ -148,7 +155,19 @@ fun ShoulderTriggersScreen(
             )
         }
 
-        // 2. Interactive L1 / R1 Coordinate Mapper & Live Battle Range
+        // 2. NEW: Custom Movable Cloned Touch Buttons Studio (C1 - C4)
+        item {
+            ClonedButtonsStudioCard(
+                config = clonedButtonsConfig,
+                isAccessibilityRunning = isAccessibilityRunning,
+                onUpdateConfig = onUpdateClonedButtonsConfig,
+                onToggleSystemOverlay = onToggleClonedButtonsOverlay,
+                onSimulateClonedTap = onSimulateClonedTap,
+                onOpenAccessibilitySettings = onOpenAccessibilitySettings
+            )
+        }
+
+        // 3. Interactive L1 / R1 Coordinate Mapper & Live Battle Range
         item {
             TriggerInteractiveArenaCard(
                 triggerConfig = triggerConfig,
@@ -404,16 +423,22 @@ private fun TriggerInteractiveArenaCard(
     onResetCounters: () -> Unit,
     onApplyGamePreset: (Float, Float, Float, Float) -> Unit
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "drone_movement")
-    val droneXRatio by infiniteTransition.animateFloat(
-        initialValue = 0.25f,
-        targetValue = 0.75f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = 2600, easing = LinearEasing),
-            repeatMode = RepeatMode.Reverse
-        ),
-        label = "drone_x"
-    )
+    val reduceThermalAnimations by TriggerEventBus.smartThermalStatus.collectAsState()
+    val droneXRatio = if (isLiveRangeMode && !reduceThermalAnimations.reduceAnimationsActive) {
+        val infiniteTransition = rememberInfiniteTransition(label = "drone_movement")
+        val animated by infiniteTransition.animateFloat(
+            initialValue = 0.25f,
+            targetValue = 0.75f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 2600, easing = LinearEasing),
+                repeatMode = RepeatMode.Reverse
+            ),
+            label = "drone_x"
+        )
+        animated
+    } else {
+        0.5f
+    }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),

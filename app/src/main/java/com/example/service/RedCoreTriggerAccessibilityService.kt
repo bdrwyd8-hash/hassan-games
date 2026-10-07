@@ -37,41 +37,113 @@ class RedCoreTriggerAccessibilityService : AccessibilityService() {
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
     private var l1BurstJob: Job? = null
     private var r1BurstJob: Job? = null
+    private val clonedBurstJobs = mutableMapOf<Int, Job>()
     private var l1KeyHeld = false
     private var r1KeyHeld = false
 
     private var windowManager: WindowManager? = null
     private var crosshairOverlayView: SystemCrosshairOverlayView? = null
-    private var toneGenerator: ToneGenerator? = null
 
     override fun onServiceConnected() {
         super.onServiceConnected()
         TriggerEventBus.setAccessibilityServiceRunning(true)
         windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-        try {
-            toneGenerator = ToneGenerator(AudioManager.STREAM_MUSIC, 65)
-        } catch (_: Exception) {
-        }
 
         serviceScope.launch {
             TriggerEventBus.crosshairConfig.collectLatest { config ->
                 updateSystemCrosshairOverlay(config)
             }
         }
+
+        serviceScope.launch {
+            TriggerEventBus.clonedTapEvents.collectLatest { event ->
+                handleClonedButtonTapEvent(event)
+            }
+        }
+
+        serviceScope.launch {
+            TriggerEventBus.isMasterEngineRunning.collectLatest { running ->
+                if (!running) {
+                    onInterrupt()
+                    updateSystemCrosshairOverlay(
+                        TriggerEventBus.crosshairConfig.value.copy(systemOverlayEnabled = false)
+                    )
+                } else {
+                    updateSystemCrosshairOverlay(TriggerEventBus.crosshairConfig.value)
+                }
+            }
+        }
     }
 
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        // Key events and overlay gestures are handled in onKeyEvent
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString() ?: return
+            // Ignore system UI overlays so we track the actual foreground app/game
+            if (pkg != packageName && !pkg.startsWith("com.android.systemui")) {
+                TriggerEventBus.onForegroundPackageChanged(pkg)
+            }
+        }
     }
 
     override fun onInterrupt() {
         l1BurstJob?.cancel()
         r1BurstJob?.cancel()
+        clonedBurstJobs.values.forEach { it.cancel() }
+        clonedBurstJobs.clear()
+    }
+
+    private fun handleClonedButtonTapEvent(event: ClonedTapEvent) {
+        val btn = event.button
+        if (!btn.enabled) return
+
+        if (!event.isPressed) {
+            clonedBurstJobs.remove(btn.id)?.cancel()
+            return
+        }
+
+        val (screenW, screenH) = getScreenDimensions()
+        val targetX = (btn.targetXRatio * screenW).coerceIn(10f, screenW - 10f)
+        val targetY = (btn.targetYRatio * screenH).coerceIn(10f, screenH - 10f)
+
+        triggerFeedback(haptic = true, sound = false, isL1 = true)
+
+        when (btn.fireMode) {
+            TriggerFireMode.SINGLE_TAP -> {
+                dispatchScreenTap(targetX, targetY, 38L)
+            }
+            TriggerFireMode.DOUBLE_TAP -> {
+                serviceScope.launch {
+                    dispatchScreenTap(targetX, targetY, 30L)
+                    delay(60L)
+                    dispatchScreenTap(targetX, targetY, 30L)
+                }
+            }
+            TriggerFireMode.HOLD_PRESS -> {
+                clonedBurstJobs.remove(btn.id)?.cancel()
+                clonedBurstJobs[btn.id] = serviceScope.launch {
+                    while (isActive) {
+                        dispatchScreenTap(targetX, targetY, 360L)
+                        delay(340L)
+                    }
+                }
+            }
+            TriggerFireMode.RAPID_BURST -> {
+                val safeRps = btn.burstRps.coerceIn(4, 20)
+                val intervalMs = (1000L / safeRps).coerceAtLeast(45L)
+                clonedBurstJobs.remove(btn.id)?.cancel()
+                clonedBurstJobs[btn.id] = serviceScope.launch {
+                    while (isActive) {
+                        dispatchScreenTap(targetX, targetY, 26L)
+                        delay(intervalMs)
+                    }
+                }
+            }
+        }
     }
 
     override fun onKeyEvent(event: KeyEvent): Boolean {
         val config = TriggerEventBus.triggerConfig.value
-        if (!config.enabled) {
+        if (!TriggerEventBus.isMasterEngineRunning.value || !config.enabled) {
             return super.onKeyEvent(event)
         }
 
@@ -237,10 +309,20 @@ class RedCoreTriggerAccessibilityService : AccessibilityService() {
             }
         }
         if (sound) {
-            try {
-                val tone = if (isL1) ToneGenerator.TONE_PROP_BEEP else ToneGenerator.TONE_PROP_ACK
-                toneGenerator?.startTone(tone, 25)
-            } catch (_: Exception) {
+            serviceScope.launch(Dispatchers.Default) {
+                var tg: ToneGenerator? = null
+                try {
+                    tg = ToneGenerator(AudioManager.STREAM_MUSIC, 55)
+                    val tone = if (isL1) ToneGenerator.TONE_PROP_BEEP else ToneGenerator.TONE_PROP_ACK
+                    tg.startTone(tone, 22)
+                    delay(45L)
+                } catch (_: Exception) {
+                } finally {
+                    try {
+                        tg?.release()
+                    } catch (_: Exception) {
+                    }
+                }
             }
         }
     }
@@ -314,7 +396,6 @@ class RedCoreTriggerAccessibilityService : AccessibilityService() {
             } catch (_: Exception) {
             }
         }
-        toneGenerator?.release()
         serviceScope.cancel()
         super.onDestroy()
     }

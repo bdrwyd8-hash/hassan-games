@@ -1,11 +1,16 @@
 package com.example.service
 
+import com.example.model.ActiveGameSession
+import com.example.model.ClonedButtonsConfig
+import com.example.model.ClonedTouchButton
 import com.example.model.CrosshairConfig
 import com.example.model.EdgeSidebarConfig
 import com.example.model.HardwareTelemetry
 import com.example.model.LowEndOptimizerConfig
+import com.example.model.NotificationShieldState
 import com.example.model.PerformanceMode
 import com.example.model.ShoulderTriggerConfig
+import com.example.model.SmartThermalStatus
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharedFlow
@@ -26,6 +31,12 @@ data class TriggerFireEvent(
     val timestampMs: Long = System.currentTimeMillis()
 )
 
+data class ClonedTapEvent(
+    val button: ClonedTouchButton,
+    val isPressed: Boolean,
+    val timestampMs: Long = System.currentTimeMillis()
+)
+
 /**
  * Real-time singleton bridge connecting hardware key events, Floating Edge-Swipe Game Bar,
  * AccessibilityService, and ViewModel.
@@ -43,11 +54,38 @@ object TriggerEventBus {
     private val _lowEndConfig = MutableStateFlow(LowEndOptimizerConfig())
     val lowEndConfig: StateFlow<LowEndOptimizerConfig> = _lowEndConfig.asStateFlow()
 
+    private val _clonedButtonsConfig = MutableStateFlow(ClonedButtonsConfig())
+    val clonedButtonsConfig: StateFlow<ClonedButtonsConfig> = _clonedButtonsConfig.asStateFlow()
+
+    private val _totalClonedTaps = MutableStateFlow(0)
+    val totalClonedTaps: StateFlow<Int> = _totalClonedTaps.asStateFlow()
+
+    private val _lastClonedActiveId = MutableStateFlow<Int?>(null)
+    val lastClonedActiveId: StateFlow<Int?> = _lastClonedActiveId.asStateFlow()
+
+    private val _clonedTapEvents = MutableSharedFlow<ClonedTapEvent>(extraBufferCapacity = 64)
+    val clonedTapEvents: SharedFlow<ClonedTapEvent> = _clonedTapEvents.asSharedFlow()
+
     private val _telemetry = MutableStateFlow(HardwareTelemetry())
     val telemetry: StateFlow<HardwareTelemetry> = _telemetry.asStateFlow()
 
-    private val _performanceMode = MutableStateFlow(PerformanceMode.DIABLO)
+    private val _performanceMode = MutableStateFlow(PerformanceMode.BALANCE)
     val performanceMode: StateFlow<PerformanceMode> = _performanceMode.asStateFlow()
+
+    private val _activeGameSession = MutableStateFlow(ActiveGameSession())
+    val activeGameSession: StateFlow<ActiveGameSession> = _activeGameSession.asStateFlow()
+
+    private val _notificationShieldState = MutableStateFlow(NotificationShieldState())
+    val notificationShieldState: StateFlow<NotificationShieldState> = _notificationShieldState.asStateFlow()
+
+    private val _smartThermalStatus = MutableStateFlow(SmartThermalStatus())
+    val smartThermalStatus: StateFlow<SmartThermalStatus> = _smartThermalStatus.asStateFlow()
+
+    private val _detectedForegroundPackage = MutableStateFlow("")
+    val detectedForegroundPackage: StateFlow<String> = _detectedForegroundPackage.asStateFlow()
+
+    private val _isMasterEngineRunning = MutableStateFlow(true)
+    val isMasterEngineRunning: StateFlow<Boolean> = _isMasterEngineRunning.asStateFlow()
 
     private val _isAccessibilityServiceRunning = MutableStateFlow(false)
     val isAccessibilityServiceRunning: StateFlow<Boolean> = _isAccessibilityServiceRunning.asStateFlow()
@@ -76,6 +114,18 @@ object TriggerEventBus {
     private val _quickBoostRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
     val quickBoostRequests: SharedFlow<Unit> = _quickBoostRequests.asSharedFlow()
 
+    private val _coolDownRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val coolDownRequests: SharedFlow<Unit> = _coolDownRequests.asSharedFlow()
+
+    private val _quickReconnectRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val quickReconnectRequests: SharedFlow<Unit> = _quickReconnectRequests.asSharedFlow()
+
+    private val _toggleNotificationShieldRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val toggleNotificationShieldRequests: SharedFlow<Unit> = _toggleNotificationShieldRequests.asSharedFlow()
+
+    private val _shutdownAndExitRequests = MutableSharedFlow<Unit>(extraBufferCapacity = 8)
+    val shutdownAndExitRequests: SharedFlow<Unit> = _shutdownAndExitRequests.asSharedFlow()
+
     fun updateTriggerConfig(config: ShoulderTriggerConfig) {
         _triggerConfig.value = config
     }
@@ -92,12 +142,52 @@ object TriggerEventBus {
         _lowEndConfig.value = config
     }
 
+    fun updateClonedButtonsConfig(config: ClonedButtonsConfig) {
+        _clonedButtonsConfig.value = config
+    }
+
+    fun emitClonedButtonTap(button: ClonedTouchButton, isDown: Boolean = true) {
+        if (isDown) {
+            _totalClonedTaps.value += 1
+            _lastClonedActiveId.value = button.id
+        } else if (_lastClonedActiveId.value == button.id) {
+            _lastClonedActiveId.value = null
+        }
+        _clonedTapEvents.tryEmit(ClonedTapEvent(button = button, isPressed = isDown))
+    }
+
     fun updateTelemetry(snapshot: HardwareTelemetry) {
         _telemetry.value = snapshot
     }
 
     fun updatePerformanceMode(mode: PerformanceMode) {
         _performanceMode.value = mode
+    }
+
+    fun updateActiveGameSession(session: ActiveGameSession) {
+        _activeGameSession.value = session
+    }
+
+    fun updateNotificationShieldState(state: NotificationShieldState) {
+        _notificationShieldState.value = state
+    }
+
+    fun updateSmartThermalStatus(status: SmartThermalStatus) {
+        _smartThermalStatus.value = status
+    }
+
+    fun onForegroundPackageChanged(packageName: String) {
+        if (packageName.isNotBlank() && packageName != _detectedForegroundPackage.value) {
+            _detectedForegroundPackage.value = packageName
+        }
+    }
+
+    fun requestQuickReconnectFromOverlay() {
+        _quickReconnectRequests.tryEmit(Unit)
+    }
+
+    fun requestToggleNotificationShieldFromOverlay() {
+        _toggleNotificationShieldRequests.tryEmit(Unit)
     }
 
     fun setAccessibilityServiceRunning(running: Boolean) {
@@ -114,6 +204,19 @@ object TriggerEventBus {
 
     fun requestQuickBoostFromOverlay() {
         _quickBoostRequests.tryEmit(Unit)
+    }
+
+    fun requestCoolDownFromOverlay() {
+        _coolDownRequests.tryEmit(Unit)
+    }
+
+    fun setMasterEngineRunning(running: Boolean) {
+        _isMasterEngineRunning.value = running
+    }
+
+    fun requestCompleteShutdown() {
+        _isMasterEngineRunning.value = false
+        _shutdownAndExitRequests.tryEmit(Unit)
     }
 
     fun onTriggerKeyStateChanged(button: TriggerButtonType, isDown: Boolean) {
@@ -210,5 +313,7 @@ object TriggerEventBus {
     fun resetShotCounters() {
         _totalL1Shots.value = 0
         _totalR1Shots.value = 0
+        _totalClonedTaps.value = 0
+        _lastClonedActiveId.value = null
     }
 }

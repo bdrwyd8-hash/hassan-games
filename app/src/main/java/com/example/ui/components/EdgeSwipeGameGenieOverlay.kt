@@ -32,17 +32,24 @@ import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ControlCamera
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DoNotTouch
 import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Layers
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Mic
 import androidx.compose.material.icons.filled.PlayArrow
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
@@ -75,6 +82,7 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.AudioRadarPreset
+import com.example.model.ClonedButtonsConfig
 import com.example.model.CrosshairConfig
 import com.example.model.EdgeSidebarConfig
 import com.example.model.HardwareTelemetry
@@ -120,7 +128,15 @@ fun EdgeSwipeGameGenieOverlay(
     onToggleMistouch: () -> Unit,
     onToggleAfkBlackScreen: (Boolean) -> Unit,
     onSwapSidebarEdge: () -> Unit,
-    onActivateSystemFloatingBar: () -> Unit
+    onActivateSystemFloatingBar: () -> Unit,
+    onRunCoolDown: () -> Unit = {},
+    clonedButtonsConfig: ClonedButtonsConfig = ClonedButtonsConfig(),
+    onToggleClonedButtonsOverlay: () -> Unit = {},
+    onToggleClonedButtonsLock: () -> Unit = {},
+    isLiveMicActive: Boolean = false,
+    onCycleVoiceMod: () -> Unit = {},
+    onToggleLiveMic: () -> Unit = {},
+    onShutdownAndExitApp: () -> Unit = {}
 ) {
     var handleOffsetY by remember { mutableFloatStateOf(0f) }
 
@@ -151,6 +167,64 @@ fun EdgeSwipeGameGenieOverlay(
             contentAlignment = Alignment.Center
         ) {
             CrosshairCanvasView(config = crosshairConfig)
+        }
+    }
+
+    // 2b. In-App Floating Magnifier Tactical Scope Reticle when enabled
+    if (lowEndConfig.magnifierEnabled && !isSystemOverlayRunning) {
+        Box(
+            modifier = Modifier.fillMaxSize(),
+            contentAlignment = Alignment.Center
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(116.dp)
+                    .clip(CircleShape)
+                    .background(CyberCyan.copy(alpha = 0.08f))
+                    .border(2.dp, CyberCyan.copy(alpha = 0.85f), CircleShape),
+                contentAlignment = Alignment.TopCenter
+            ) {
+                Text(
+                    text = "${(lowEndConfig.magnifierZoom * 10).roundToInt() / 10f}x SCOPE",
+                    fontFamily = OrbitronFontFamily,
+                    fontSize = 9.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CyberCyan,
+                    modifier = Modifier.padding(top = 6.dp)
+                )
+            }
+        }
+    }
+
+    // 2c. In-App Floating HUD Pill (FPS / Temp / RAM) when enabled
+    val showAnyHud = lowEndConfig.fpsOverlayEnabled || lowEndConfig.tempOverlayEnabled || lowEndConfig.ramOverlayEnabled
+    if (showAnyHud && !isSystemOverlayRunning) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(top = 56.dp, start = 16.dp),
+            contentAlignment = Alignment.TopStart
+        ) {
+            val metrics = buildList {
+                if (lowEndConfig.fpsOverlayEnabled) add("${telemetry.liveFps} FPS")
+                if (lowEndConfig.tempOverlayEnabled) add("${telemetry.batteryTempCelsius}°C")
+                if (lowEndConfig.ramOverlayEnabled) add("RAM ${telemetry.ramUsagePercent}%")
+            }
+            Surface(
+                shape = RoundedCornerShape(16.dp),
+                color = ObsidianSurface.copy(alpha = 0.88f),
+                border = BorderStroke(1.dp, CyberCyan),
+                modifier = Modifier.testTag("in_app_hud_overlay_pill")
+            ) {
+                Text(
+                    text = metrics.joinToString("  •  "),
+                    fontFamily = OrbitronFontFamily,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = MatrixGreen,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
         }
     }
 
@@ -340,29 +414,61 @@ fun EdgeSwipeGameGenieOverlay(
                         FloatingMetricItem("PING", "${telemetry.pingMs}ms", MatrixGreen)
                     }
 
-                    // 1-Tap Instant RAM & Cache Purge inside Floating Bar
-                    Button(
-                        onClick = onRunInstantBoost,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(44.dp)
-                            .testTag("floating_instant_boost_btn"),
-                        shape = CutCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = CrimsonRed,
-                            contentColor = Color.White
-                        )
+                    // 1-Tap Instant RAM & Cache Purge + ICE Cooler inside Floating Bar
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.DeleteSweep,
-                            contentDescription = null,
-                            modifier = Modifier.size(18.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "مسح الكاش وتسريع الرام فوراً",
-                            style = MaterialTheme.typography.labelLarge
-                        )
+                        Button(
+                            onClick = onRunInstantBoost,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .testTag("floating_instant_boost_btn"),
+                            shape = CutCornerShape(8.dp),
+                            contentPadding = PaddingValues(horizontal = 8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CrimsonRed,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.DeleteSweep,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "تسريع الرام",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onRunCoolDown,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .testTag("floating_cooldown_btn"),
+                            shape = CutCornerShape(8.dp),
+                            border = BorderStroke(1.dp, CyberCyan),
+                            contentPadding = PaddingValues(horizontal = 8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.AcUnit,
+                                contentDescription = null,
+                                tint = CyberCyan,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = "تبريد المعالج",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = CyberCyan,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
 
                     // Performance Mode Quick Selector
@@ -469,6 +575,54 @@ fun EdgeSwipeGameGenieOverlay(
                                 modifier = Modifier.weight(1f)
                             )
                         }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FloatingDockTile(
+                                icon = Icons.Default.ControlCamera,
+                                title = "أزرار منسوخة",
+                                status = if (clonedButtonsConfig.systemOverlayEnabled) "عائمة ON" else "إظهار C1-C4",
+                                active = clonedButtonsConfig.systemOverlayEnabled,
+                                accent = CyberCyan,
+                                onClick = onToggleClonedButtonsOverlay,
+                                modifier = Modifier.weight(1f)
+                            )
+                            FloatingDockTile(
+                                icon = if (clonedButtonsConfig.isLockedForPlay) Icons.Default.Lock else Icons.Default.LockOpen,
+                                title = "قفل المواقع",
+                                status = if (clonedButtonsConfig.isLockedForPlay) "مقفول للعب 🔒" else "وضع تحريك 🔓",
+                                active = clonedButtonsConfig.isLockedForPlay,
+                                accent = MatrixGreen,
+                                onClick = onToggleClonedButtonsLock,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FloatingDockTile(
+                                icon = Icons.Default.RecordVoiceOver,
+                                title = "مغير الصوت",
+                                status = lowEndConfig.voiceModPreset.arabicName.substringBefore(" ("),
+                                active = true,
+                                accent = ElectricPurple,
+                                onClick = onCycleVoiceMod,
+                                modifier = Modifier.weight(1f)
+                            )
+                            FloatingDockTile(
+                                icon = Icons.Default.Mic,
+                                title = "مايك الألعاب",
+                                status = if (isLiveMicActive) "مباشر ON 🎙️" else "تشغيل المايك",
+                                active = isLiveMicActive,
+                                accent = MatrixGreen,
+                                onClick = onToggleLiveMic,
+                                modifier = Modifier.weight(1f)
+                            )
+                        }
                     }
 
                     // Tactical Cooldown / Airdrop Stopwatch
@@ -569,6 +723,32 @@ fun EdgeSwipeGameGenieOverlay(
                             style = MaterialTheme.typography.bodySmall,
                             color = if (isSystemOverlayRunning) MatrixGreen else CyberCyan,
                             fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    // Complete Shutdown & Exit Button (Stops background & closes app)
+                    Button(
+                        onClick = onShutdownAndExitApp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("sidebar_shutdown_exit_btn"),
+                        shape = RoundedCornerShape(8.dp),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = CrimsonRed,
+                            contentColor = Color.White
+                        ),
+                        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 10.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PowerSettingsNew,
+                            contentDescription = null,
+                            modifier = Modifier.size(16.dp)
+                        )
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = "⏹️ إنهاء وإغلاق البرنامج بالكامل (إيقاف الخلفية)",
+                            style = MaterialTheme.typography.bodySmall,
+                            fontWeight = FontWeight.ExtraBold
                         )
                     }
                 }

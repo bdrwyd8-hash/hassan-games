@@ -356,22 +356,22 @@ fun RotatingCoolingTurbine(
     isTurboBoosting: Boolean,
     size: Dp = 76.dp
 ) {
-    val infiniteTransition = rememberInfiniteTransition(label = "turbine_rotation")
-    val durationMs = when {
-        isTurboBoosting -> 380
-        rpm >= 18000 -> 650
-        rpm >= 12000 -> 1100
-        else -> 2000
+    // Thermal optimization: only spin at high speed during active boost; static when idle so GPU stays cool
+    val angle = if (isTurboBoosting) {
+        val infiniteTransition = rememberInfiniteTransition(label = "turbine_rotation")
+        val animated by infiniteTransition.animateFloat(
+            initialValue = 0f,
+            targetValue = 360f,
+            animationSpec = infiniteRepeatable(
+                animation = tween(durationMillis = 480, easing = LinearEasing),
+                repeatMode = RepeatMode.Restart
+            ),
+            label = "blade_angle"
+        )
+        animated
+    } else {
+        (rpm % 360).toFloat()
     }
-    val angle by infiniteTransition.animateFloat(
-        initialValue = 0f,
-        targetValue = 360f,
-        animationSpec = infiniteRepeatable(
-            animation = tween(durationMillis = durationMs, easing = LinearEasing),
-            repeatMode = RepeatMode.Restart
-        ),
-        label = "blade_angle"
-    )
 
     Box(
         modifier = Modifier.size(size),

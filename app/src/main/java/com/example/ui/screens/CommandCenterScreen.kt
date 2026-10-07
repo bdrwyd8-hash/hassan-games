@@ -23,6 +23,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AcUnit
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CleaningServices
@@ -57,13 +58,28 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.R
+import com.example.model.ActiveGameSession
+import com.example.model.AdvisorPresetMode
+import com.example.model.AutoSettingsRecommendation
 import com.example.model.BoostResult
 import com.example.model.CrosshairConfig
 import com.example.model.HardwareTelemetry
 import com.example.model.LowEndOptimizerConfig
+import com.example.model.NotificationShieldState
+import com.example.model.OneTapGamePrepStatus
 import com.example.model.PerformanceMode
 import com.example.model.ShoulderTriggerConfig
+import com.example.model.SmartThermalMode
+import com.example.model.SmartThermalStatus
+import com.example.model.VoiceModPreset
+import com.example.ui.components.AutoSettingsAdvisorCard
+import com.example.ui.components.CustomAppIconStudioCard
+import com.example.ui.components.MasterStartStopAppBanner
+import com.example.ui.components.OneTapGamePrepCard
+import com.example.ui.components.QuickGameReconnectBanner
 import com.example.ui.components.RotatingCoolingTurbine
+import com.example.ui.components.SmartThermalAndShieldCard
+import com.example.ui.components.StudioVoiceChangerCard
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.CyberCyan
@@ -98,7 +114,39 @@ fun CommandCenterScreen(
     onTestNetworkPing: () -> Unit,
     onOpenEdgeSidebar: () -> Unit = {},
     onEnableSystemFloatingBar: () -> Unit = {},
-    isSystemOverlayRunning: Boolean = false
+    isSystemOverlayRunning: Boolean = false,
+    onRunCoolDown: () -> Unit = {},
+    isMasterRunning: Boolean = false,
+    onToggleMasterStartOrExit: () -> Unit = {},
+    isLiveMicActive: Boolean = false,
+    isRecordingClip: Boolean = false,
+    isPlayingClip: Boolean = false,
+    micInputLevel: Float = 0f,
+    voiceStatusText: String = "",
+    noiseGateEnabled: Boolean = true,
+    hasMicPermission: () -> Boolean = { false },
+    onSelectVoicePreset: (VoiceModPreset) -> Unit = {},
+    onToggleLiveMic: () -> Unit = {},
+    onStartOrStopClipTest: () -> Unit = {},
+    onReplayRecordedClip: () -> Unit = {},
+    onToggleNoiseGate: (Boolean) -> Unit = {},
+    selectedDemoPhraseIndex: Int = 0,
+    onPlayReadyDemoWithoutMic: (VoiceModPreset, Int) -> Unit = { preset, _ -> onSelectVoicePreset(preset) },
+    oneTapPrepStatus: OneTapGamePrepStatus = OneTapGamePrepStatus(),
+    activeGameTitle: String? = null,
+    onRunOneTapPrep: () -> Unit = {},
+    activeSession: ActiveGameSession = ActiveGameSession(),
+    onQuickReconnect: () -> Unit = {},
+    smartThermalStatus: SmartThermalStatus = SmartThermalStatus(),
+    notificationShieldState: NotificationShieldState = NotificationShieldState(),
+    onSelectThermalMode: (SmartThermalMode) -> Unit = {},
+    onToggleNotificationShield: () -> Unit = {},
+    onOpenDndPermissionSettings: () -> Unit = {},
+    onToggleHudMetric: (fps: Boolean?, temp: Boolean?, ram: Boolean?, magnifier: Boolean?) -> Unit = { _, _, _, _ -> },
+    onUpdateMagnifierZoom: (Float) -> Unit = {},
+    autoSettingsRecommendation: AutoSettingsRecommendation = AutoSettingsRecommendation(),
+    onSelectAdvisorMode: (AdvisorPresetMode) -> Unit = {},
+    onApplyAdvisorRecommendations: () -> Unit = {}
 ) {
     LazyColumn(
         modifier = Modifier
@@ -107,6 +155,32 @@ fun CommandCenterScreen(
         contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // 0. Unified Master Start / Stop & Exit App Button Banner
+        item {
+            MasterStartStopAppBanner(
+                isMasterRunning = isMasterRunning,
+                onToggleStartOrExit = onToggleMasterStartOrExit
+            )
+        }
+
+        // 0b. One-Tap Game Preparation System
+        item {
+            OneTapGamePrepCard(
+                prepStatus = oneTapPrepStatus,
+                activeGameTitle = activeGameTitle,
+                onRunOneTapPrep = onRunOneTapPrep
+            )
+        }
+
+        // 0c. Quick Game Reconnect Banner
+        item {
+            QuickGameReconnectBanner(
+                session = activeSession,
+                onQuickReconnect = onQuickReconnect,
+                onOpenGameProfiles = { onNavigateToTab(RedCoreTab.GAME_SPACE) }
+            )
+        }
+
         // 1. Hero RedCore Turbine & Super Boost Card
         item {
             HeroTurbineDashboardCard(
@@ -116,7 +190,31 @@ fun CommandCenterScreen(
                 boostProgress = boostProgress,
                 boostStageText = boostStageText,
                 lastBoostResult = lastBoostResult,
-                onRunSuperBoost = onRunSuperBoost
+                onRunSuperBoost = onRunSuperBoost,
+                onRunCoolDown = onRunCoolDown
+            )
+        }
+
+        // 1b. Smart Thermal Mode + Notification Shield + Floating HUD Overlays
+        item {
+            SmartThermalAndShieldCard(
+                thermalStatus = smartThermalStatus,
+                shieldState = notificationShieldState,
+                lowEndConfig = lowEndConfig,
+                onSelectThermalMode = onSelectThermalMode,
+                onToggleNotificationShield = onToggleNotificationShield,
+                onOpenDndPermissionSettings = onOpenDndPermissionSettings,
+                onToggleHudMetric = onToggleHudMetric,
+                onUpdateMagnifierZoom = onUpdateMagnifierZoom
+            )
+        }
+
+        // 1c. Auto Settings Advisor Card
+        item {
+            AutoSettingsAdvisorCard(
+                recommendation = autoSettingsRecommendation,
+                onSelectMode = onSelectAdvisorMode,
+                onApplyRecommendedTools = onApplyAdvisorRecommendations
             )
         }
 
@@ -146,6 +244,27 @@ fun CommandCenterScreen(
             )
         }
 
+        // 4. Studio HD Microphone Voice Changer Card (Robot / Squirrel / Female / Male)
+        item {
+            StudioVoiceChangerCard(
+                activeVoicePreset = lowEndConfig.voiceModPreset,
+                isLiveMicActive = isLiveMicActive,
+                isRecordingClip = isRecordingClip,
+                isPlayingClip = isPlayingClip,
+                micInputLevel = micInputLevel,
+                voiceStatusText = voiceStatusText,
+                noiseGateEnabled = noiseGateEnabled,
+                hasMicPermission = hasMicPermission,
+                onSelectVoicePreset = onSelectVoicePreset,
+                onToggleLiveMic = onToggleLiveMic,
+                onStartOrStopClipTest = onStartOrStopClipTest,
+                onReplayRecordedClip = onReplayRecordedClip,
+                onToggleNoiseGate = onToggleNoiseGate,
+                selectedDemoPhraseIndex = selectedDemoPhraseIndex,
+                onPlayReadyDemoWithoutMic = onPlayReadyDemoWithoutMic
+            )
+        }
+
         // 4. Quick Hardware & Low-End Device Boosters Grid
         item {
             QuickGamingTogglesSection(
@@ -169,6 +288,13 @@ fun CommandCenterScreen(
             )
         }
 
+        // 6. Custom App Icon & Logo Studio Card
+        item {
+            CustomAppIconStudioCard(
+                defaultDrawableRes = R.drawable.img_launcher_icon_1791322202008
+            )
+        }
+
         item {
             Spacer(modifier = Modifier.height(16.dp))
         }
@@ -183,7 +309,8 @@ private fun HeroTurbineDashboardCard(
     boostProgress: Float,
     boostStageText: String,
     lastBoostResult: BoostResult?,
-    onRunSuperBoost: () -> Unit
+    onRunSuperBoost: () -> Unit,
+    onRunCoolDown: () -> Unit
 ) {
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -371,6 +498,38 @@ private fun HeroTurbineDashboardCard(
                         else "تقوية خارقة الآن (مسح الكاش + إيقاف الخلفية)",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Bold
+                    )
+                }
+
+                Spacer(modifier = Modifier.height(8.dp))
+
+                // Thermal Guard / ICE CPU Cooler Button
+                Button(
+                    onClick = onRunCoolDown,
+                    enabled = !isBoosting,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(44.dp)
+                        .border(1.dp, CyberCyan.copy(alpha = 0.7f), CutCornerShape(8.dp))
+                        .testTag("cpu_cooldown_button"),
+                    shape = CutCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = ObsidianSurface,
+                        contentColor = CyberCyan
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.AcUnit,
+                        contentDescription = null,
+                        tint = CyberCyan,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = "تبريد المعالج ومنع السخونة (${telemetry.batteryTempCelsius}°C ICE Cooler)",
+                        style = MaterialTheme.typography.labelLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = CyberCyan
                     )
                 }
 
@@ -577,14 +736,14 @@ private fun VolumeTriggerSpotlightBanner(
                     Column {
                         Row(verticalAlignment = Alignment.CenterVertically) {
                             Text(
-                                text = "أزرار الكتف L1 / R1 بأزرار الصوت",
+                                text = "أزرار الكتف L1/R1 + الأزرار المنسوخة (C1-C4)",
                                 style = MaterialTheme.typography.titleMedium,
                                 color = TitaniumWhite,
                                 fontWeight = FontWeight.Bold
                             )
                         }
                         Text(
-                            text = "حَوّل زر رفع الصوت إلى (L1) وزر خفض الصوت إلى (R1) للرمي السريع والسكوب",
+                            text = "انسخ أي زر ثابت باللعبة وحركه لأي مكان يناسبك + تخصيص أزرار الصوت L1/R1",
                             style = MaterialTheme.typography.bodySmall,
                             color = SilverMist
                         )
