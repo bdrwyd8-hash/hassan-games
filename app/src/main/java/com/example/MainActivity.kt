@@ -1,72 +1,81 @@
 package com.example
 
 import android.os.Bundle
-import android.view.KeyEvent
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.viewModels
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.safeDrawing
-import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.statusBarsPadding
+import androidx.compose.foundation.layout.systemBars
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Dashboard
-import androidx.compose.material.icons.filled.Gamepad
-import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.VolumeUp
-import androidx.compose.material.icons.outlined.Dashboard
-import androidx.compose.material.icons.outlined.Gamepad
-import androidx.compose.material.icons.outlined.GpsFixed
-import androidx.compose.material.icons.outlined.Memory
-import androidx.compose.material.icons.outlined.VolumeUp
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Icon
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
-import androidx.compose.material3.NavigationRail
-import androidx.compose.material3.NavigationRailItem
-import androidx.compose.material3.NavigationRailItemDefaults
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.example.model.GameSpaceProfile
-import com.example.service.TriggerButtonType
-import com.example.service.TriggerEventBus
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.example.ui.components.EdgeSwipeGameGenieOverlay
 import com.example.ui.components.RedCoreTopStatusBar
-import com.example.ui.components.StatusToastBanner
 import com.example.ui.screens.ArsenalGfxScreen
 import com.example.ui.screens.CommandCenterScreen
 import com.example.ui.screens.GameSpaceLobbyScreen
 import com.example.ui.screens.RamBoosterScreen
-import com.example.ui.screens.ShoulderTriggersScreen
+import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
+import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.GunmetalCard
+import com.example.ui.theme.MatrixGreen
 import com.example.ui.theme.MyApplicationTheme
 import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.ObsidianSurface
+import com.example.ui.theme.OrbitronFontFamily
 import com.example.ui.theme.SilverMist
 import com.example.ui.theme.TitaniumWhite
 import com.example.viewmodel.RedCoreTab
@@ -81,134 +90,187 @@ class MainActivity : ComponentActivity() {
         enableEdgeToEdge()
         setContent {
             MyApplicationTheme {
-                RedCoreGameSpaceApp(
+                HassanGamesRootApp(
                     viewModel = viewModel,
-                    onExitApp = { finishAndRemoveTask() }
+                    onExitApp = {
+                        try {
+                            finishAndRemoveTask()
+                        } catch (_: Exception) {
+                            finishAffinity()
+                        }
+                    }
                 )
             }
         }
     }
-
-    override fun onResume() {
-        super.onResume()
-        viewModel.setAppInForeground(true)
-    }
-
-    override fun onStop() {
-        viewModel.setAppInForeground(false)
-        super.onStop()
-    }
-
-    override fun onKeyDown(keyCode: Int, event: KeyEvent?): Boolean {
-        when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (viewModel.handleInAppVolumeTrigger(TriggerButtonType.L1_VOLUME_UP, isDown = true)) {
-                    return true
-                }
-            }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (viewModel.handleInAppVolumeTrigger(TriggerButtonType.R1_VOLUME_DOWN, isDown = true)) {
-                    return true
-                }
-            }
-        }
-        return super.onKeyDown(keyCode, event)
-    }
-
-    override fun onKeyUp(keyCode: Int, event: KeyEvent?): Boolean {
-        when (keyCode) {
-            KeyEvent.KEYCODE_VOLUME_UP -> {
-                if (viewModel.handleInAppVolumeTrigger(TriggerButtonType.L1_VOLUME_UP, isDown = false)) {
-                    return true
-                }
-            }
-            KeyEvent.KEYCODE_VOLUME_DOWN -> {
-                if (viewModel.handleInAppVolumeTrigger(TriggerButtonType.R1_VOLUME_DOWN, isDown = false)) {
-                    return true
-                }
-            }
-        }
-        return super.onKeyUp(keyCode, event)
-    }
 }
 
 @Composable
-fun RedCoreGameSpaceApp(
+fun HassanGamesRootApp(
     viewModel: RedCoreViewModel,
-    onExitApp: () -> Unit = {}
+    onExitApp: () -> Unit
 ) {
-    val selectedTab by viewModel.selectedTab.collectAsStateWithLifecycle()
-    val performanceMode by viewModel.performanceMode.collectAsStateWithLifecycle()
-    val triggerConfig by viewModel.triggerConfig.collectAsStateWithLifecycle()
-    val crosshairConfig by viewModel.crosshairConfig.collectAsStateWithLifecycle()
-    val edgeSidebarConfig by viewModel.edgeSidebarConfig.collectAsStateWithLifecycle()
-    val lowEndConfig by viewModel.lowEndConfig.collectAsStateWithLifecycle()
-    val clonedButtonsConfig by viewModel.clonedButtonsConfig.collectAsStateWithLifecycle()
-    val telemetry by viewModel.telemetry.collectAsStateWithLifecycle()
-    val backgroundApps by viewModel.backgroundApps.collectAsStateWithLifecycle()
-    val gameCatalog by viewModel.gameCatalog.collectAsStateWithLifecycle()
-    val activeGameProfile by viewModel.activeGameProfile.collectAsStateWithLifecycle()
-    val activeGameSession by viewModel.activeGameSession.collectAsStateWithLifecycle()
-    val oneTapPrepStatus by viewModel.oneTapPrepStatus.collectAsStateWithLifecycle()
-    val smartThermalStatus by viewModel.smartThermalStatus.collectAsStateWithLifecycle()
-    val notificationShieldState by viewModel.notificationShieldState.collectAsStateWithLifecycle()
-    val autoSettingsRecommendation by viewModel.autoSettingsRecommendation.collectAsStateWithLifecycle()
-    val isBoosting by viewModel.isBoosting.collectAsStateWithLifecycle()
-    val boostProgress by viewModel.boostProgress.collectAsStateWithLifecycle()
-    val boostStageText by viewModel.boostStageText.collectAsStateWithLifecycle()
-    val lastBoostResult by viewModel.lastBoostResult.collectAsStateWithLifecycle()
-    val statusBannerMessage by viewModel.statusBannerMessage.collectAsStateWithLifecycle()
-    val canDrawOverlays by viewModel.canDrawOverlays.collectAsStateWithLifecycle()
-
-    val isMasterRunning by viewModel.isMasterEngineRunning.collectAsStateWithLifecycle()
-    val isLiveMicActive by viewModel.isLiveMicActive.collectAsStateWithLifecycle()
-    val isRecordingVoiceClip by viewModel.isRecordingVoiceClip.collectAsStateWithLifecycle()
-    val isPlayingVoiceClip by viewModel.isPlayingVoiceClip.collectAsStateWithLifecycle()
-    val micInputLevel by viewModel.micInputLevel.collectAsStateWithLifecycle()
-    val voiceStatusText by viewModel.voiceStatusText.collectAsStateWithLifecycle()
-    val voiceNoiseGateEnabled by viewModel.voiceNoiseGateEnabled.collectAsStateWithLifecycle()
-    val selectedVoiceDemoPhraseIndex by viewModel.selectedVoiceDemoPhraseIndex.collectAsStateWithLifecycle()
-
-    val l1Pressed by TriggerEventBus.l1Pressed.collectAsState()
-    val r1Pressed by TriggerEventBus.r1Pressed.collectAsState()
-    val isInAppSidebarOpen by TriggerEventBus.isInAppSidebarOpen.collectAsState()
-    val isSystemOverlayRunning by TriggerEventBus.isOverlayServiceRunning.collectAsState()
-
-    LaunchedEffect(Unit) {
-        TriggerEventBus.shutdownAndExitRequests.collect {
-            viewModel.stopAllBackgroundWorkAndExit(onExitApp)
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_RESUME -> viewModel.setAppInForeground(true)
+                Lifecycle.Event.ON_STOP -> viewModel.setAppInForeground(false)
+                else -> Unit
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
-    // Ensure Back press closes the floating sidebar first, or returns to Command Center
-    if (isInAppSidebarOpen) {
-        BackHandler {
-            viewModel.setInAppSidebarExpanded(false)
-        }
-    } else if (selectedTab != RedCoreTab.COMMAND_CENTER) {
-        BackHandler {
-            viewModel.selectTab(RedCoreTab.COMMAND_CENTER)
+    val selectedTab by viewModel.selectedTab.collectAsState()
+    val performanceMode by viewModel.performanceMode.collectAsState()
+    val telemetry by viewModel.telemetry.collectAsState()
+    val smartThermalStatus by viewModel.smartThermalStatus.collectAsState()
+    val advisorPresetMode by viewModel.advisorPresetMode.collectAsState()
+    val autoSettingsRecommendation by viewModel.autoSettingsRecommendation.collectAsState()
+    val clonedButtonsConfig by viewModel.clonedButtonsConfig.collectAsState()
+    val crosshairConfig by viewModel.crosshairConfig.collectAsState()
+    val lowEndConfig by viewModel.lowEndConfig.collectAsState()
+    val gfxResolution by viewModel.gfxResolution.collectAsState()
+    val touchSamplingRate by viewModel.touchSamplingRate.collectAsState()
+    val optimizableProcesses by viewModel.optimizableProcesses.collectAsState()
+    val isBoosting by viewModel.isBoosting.collectAsState()
+    val lastBoostReport by viewModel.lastBoostReport.collectAsState()
+    val isPreparingGame by viewModel.isPreparingGame.collectAsState()
+    val lastGamePrepReport by viewModel.lastGamePrepReport.collectAsState()
+    val games by viewModel.gameSpaceCatalog.collectAsState()
+    val installedCandidates by viewModel.installedAppCandidates.collectAsState()
+    val showAddGameSheet by viewModel.showAddGameSheet.collectAsState()
+    val lastSessionInfo by viewModel.lastSessionGameInfo.collectAsState()
+    val notificationShieldState by viewModel.notificationShieldState.collectAsState()
+    val fpsHudOverlayEnabled by viewModel.fpsHudOverlayEnabled.collectAsState()
+    val edgeGenieExpanded by viewModel.edgeGenieExpanded.collectAsState()
+    val overlayPermissionGranted by viewModel.overlayPermissionGranted.collectAsState()
+    val accessibilityServiceEnabled by viewModel.accessibilityServiceEnabled.collectAsState()
+    val floatingOverlayRunning by viewModel.floatingOverlayRunning.collectAsState()
+    val statusBannerMessage by viewModel.statusBannerMessage.collectAsState()
+    val isMasterEngineRunning by viewModel.isMasterEngineRunning.collectAsState()
+
+    var selectedGameId by remember(games) {
+        mutableStateOf(games.firstOrNull()?.id ?: "")
+    }
+    if (selectedGameId.isBlank() && games.isNotEmpty()) {
+        selectedGameId = games.first().id
+    }
+
+    val fpsHistory = remember(telemetry.liveFps) {
+        val base = telemetry.liveFps
+        List(18) { idx -> (base + ((idx % 3) - 1)).coerceIn(24, 144) }
+    }
+
+    // Back navigation handling for secondary tabs and expanded side panel
+    BackHandler(enabled = edgeGenieExpanded || selectedTab != RedCoreTab.GAME_SPACE) {
+        if (edgeGenieExpanded) {
+            viewModel.setEdgeGenieExpanded(false)
+        } else {
+            viewModel.selectTab(RedCoreTab.GAME_SPACE)
         }
     }
 
-    BoxWithConstraints(
+    Box(
         modifier = Modifier
             .fillMaxSize()
             .background(ObsidianBlack)
     ) {
-        val useRail = maxWidth >= 600.dp
-
         Scaffold(
             modifier = Modifier.fillMaxSize(),
             containerColor = ObsidianBlack,
-            contentWindowInsets = WindowInsets.safeDrawing,
-            bottomBar = {
-                if (!useRail) {
-                    RedCoreBottomNavigationBar(
-                        selectedTab = selectedTab,
-                        onSelectTab = viewModel::selectTab
+            contentWindowInsets = WindowInsets.systemBars,
+            topBar = {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .statusBarsPadding()
+                ) {
+                    RedCoreTopStatusBar(
+                        telemetry = telemetry,
+                        performanceMode = performanceMode,
+                        crosshairEnabled = crosshairConfig.enabled,
+                        isMasterRunning = isMasterEngineRunning,
+                        onQuickAddGameClick = {
+                            viewModel.selectTab(RedCoreTab.GAME_SPACE)
+                            viewModel.openAddGameSheet()
+                        },
+                        onQuickCrosshairClick = {
+                            viewModel.toggleCrosshair(!crosshairConfig.enabled)
+                        },
+                        onQuickStartOrStopClick = {
+                            viewModel.toggleMasterEngineOrExit(onExitRequested = onExitApp)
+                        }
                     )
+
+                    AnimatedVisibility(
+                        visible = statusBannerMessage != null,
+                        enter = fadeIn(),
+                        exit = fadeOut()
+                    ) {
+                        statusBannerMessage?.let { msg ->
+                            Surface(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                                    .testTag("status_toast_banner"),
+                                shape = RoundedCornerShape(10.dp),
+                                color = GunmetalCard,
+                                border = BorderStroke(1.dp, MatrixGreen)
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 12.dp, vertical = 8.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Row(
+                                        modifier = Modifier.weight(1f),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.CheckCircle,
+                                            contentDescription = null,
+                                            tint = MatrixGreen,
+                                            modifier = Modifier.size(18.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = msg,
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = TitaniumWhite,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    }
+                                    IconButton(
+                                        onClick = { viewModel.dismissStatusBanner() },
+                                        modifier = Modifier.size(26.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Close,
+                                            contentDescription = "إغلاق التنبيه",
+                                            tint = SilverMist,
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 }
+            },
+            bottomBar = {
+                HassanGamingBottomBar(
+                    selectedTab = selectedTab,
+                    accentColor = performanceMode.primaryColor,
+                    myGamesCount = games.size,
+                    onSelectTab = { viewModel.selectTab(it) }
+                )
             }
         ) { innerPadding ->
             Box(
@@ -216,356 +278,330 @@ fun RedCoreGameSpaceApp(
                     .fillMaxSize()
                     .padding(innerPadding)
             ) {
-                Row(modifier = Modifier.fillMaxSize()) {
-                    if (useRail) {
-                        RedCoreSideNavigationRail(
-                            selectedTab = selectedTab,
-                            onSelectTab = viewModel::selectTab
+                when (selectedTab) {
+                    RedCoreTab.GAME_SPACE -> {
+                        GameSpaceLobbyScreen(
+                            games = games,
+                            selectedGameId = selectedGameId,
+                            installedCandidates = installedCandidates,
+                            showAddGamePicker = showAddGameSheet,
+                            lastSessionInfo = lastSessionInfo,
+                            isPreparingGame = isPreparingGame,
+                            lastGamePrepReport = lastGamePrepReport,
+                            notificationShieldState = notificationShieldState,
+                            onSelectGame = { selectedGameId = it },
+                            onLaunchGame = { profile ->
+                                selectedGameId = profile.id
+                                viewModel.launchOrSimulateGame(profile)
+                            },
+                            onUpdateGameProfile = { gameId, transform ->
+                                val existing = games.find { it.id == gameId }
+                                if (existing != null) {
+                                    viewModel.updateGameProfile(transform(existing))
+                                }
+                            },
+                            onRemoveGame = { gameId ->
+                                viewModel.removeGameFromMyGames(gameId)
+                            },
+                            onOpenAddGamePicker = { viewModel.openAddGameSheet() },
+                            onCloseAddGamePicker = { viewModel.closeAddGameSheet() },
+                            onRefreshInstalledApps = { viewModel.refreshSystemPermissionsAndLists() },
+                            onAddInstalledCandidate = { candidate ->
+                                viewModel.addInstalledCandidateToMyGames(candidate)
+                            },
+                            onAddCustomGame = { title, pkg, genre, mode ->
+                                viewModel.addCustomGameToMyGames(
+                                    title = title,
+                                    packageName = pkg,
+                                    genreAr = genre,
+                                    recommendedMode = mode,
+                                    recommendedFps = mode.targetFps
+                                )
+                            },
+                            onRunOneTapGamePreparation = { launchAfter ->
+                                val selectedProfile = games.find { it.id == selectedGameId } ?: games.firstOrNull()
+                                if (launchAfter && selectedProfile != null) {
+                                    viewModel.launchOrSimulateGame(selectedProfile)
+                                } else {
+                                    viewModel.executeOneTapGamePreparation(selectedProfile)
+                                }
+                            },
+                            onQuickReconnectLastGame = { viewModel.quickReconnectLastGame() },
+                            onClearLastSessionRecord = { viewModel.clearLastSessionRecord() },
+                            onToggleNotificationShield = { viewModel.toggleNotificationShield() },
+                            onOpenDndPermissionSettings = { viewModel.openDndPermissionSettings() },
+                            onLoadAppIcon = { pkg -> viewModel.getAppIconBitmap(pkg) }
                         )
                     }
 
-                    Column(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxHeight()
-                    ) {
-                        RedCoreTopStatusBar(
+                    RedCoreTab.COMMAND_CENTER -> {
+                        CommandCenterScreen(
                             telemetry = telemetry,
+                            fpsHistory = fpsHistory,
                             performanceMode = performanceMode,
-                            triggersEnabled = triggerConfig.enabled,
-                            crosshairEnabled = crosshairConfig.enabledInApp,
-                            l1Pressed = l1Pressed,
-                            r1Pressed = r1Pressed,
-                            onQuickTriggerClick = { viewModel.selectTab(RedCoreTab.SHOULDER_TRIGGERS) },
-                            onQuickCrosshairClick = {
-                                viewModel.updateCrosshairConfig { it.copy(enabledInApp = !it.enabledInApp) }
+                            games = games,
+                            selectedGameId = selectedGameId,
+                            crosshairConfig = crosshairConfig,
+                            clonedButtonsConfig = clonedButtonsConfig,
+                            lowEndConfig = lowEndConfig,
+                            fpsPillVisible = fpsHudOverlayEnabled,
+                            isBoosting = isBoosting,
+                            isAccessibilityRunning = accessibilityServiceEnabled,
+                            canDrawOverlays = overlayPermissionGranted,
+                            isSystemFloatingBarRunning = floatingOverlayRunning,
+                            isPreparingGame = isPreparingGame,
+                            lastGamePrepReport = lastGamePrepReport,
+                            smartThermalStatus = smartThermalStatus,
+                            advisorPresetMode = advisorPresetMode,
+                            autoSettingsRecommendation = autoSettingsRecommendation,
+                            lastSessionInfo = lastSessionInfo,
+                            notificationShieldState = notificationShieldState,
+                            onSelectPerformanceMode = { viewModel.selectPerformanceMode(it) },
+                            onQuickBoostRam = { viewModel.executeSuperBoost() },
+                            onQuickLaunchSelectedGame = {
+                                val target = games.find { it.id == selectedGameId } ?: games.firstOrNull()
+                                if (target != null) {
+                                    viewModel.launchOrSimulateGame(target)
+                                }
+                            },
+                            onOpenMyGamesTab = { viewModel.selectTab(RedCoreTab.GAME_SPACE) },
+                            onToggleFpsPill = { viewModel.toggleFpsHudOverlay(it) },
+                            onToggleCrosshairOverlay = { viewModel.toggleCrosshair(it) },
+                            onToggleClonedButtonsOverlay = {
+                                viewModel.toggleClonedButtonsMaster(!clonedButtonsConfig.enabled)
+                            },
+                            onLaunchSystemFloatingSidebar = {
+                                if (floatingOverlayRunning) {
+                                    viewModel.stopFloatingSidebarOverlay()
+                                } else if (overlayPermissionGranted) {
+                                    viewModel.startFloatingSidebarOverlay()
+                                } else {
+                                    viewModel.openOverlayPermissionSettings()
+                                }
+                            },
+                            onRunOneTapGamePreparation = { launchAfter ->
+                                val selectedProfile = games.find { it.id == selectedGameId } ?: games.firstOrNull()
+                                if (launchAfter && selectedProfile != null) {
+                                    viewModel.launchOrSimulateGame(selectedProfile)
+                                } else {
+                                    viewModel.executeOneTapGamePreparation(selectedProfile)
+                                }
+                            },
+                            onSelectSmartThermalMode = { viewModel.setSmartThermalMode(it) },
+                            onSelectAdvisorPreset = { viewModel.selectAdvisorPresetMode(it) },
+                            onApplyAdvisorPreset = { viewModel.applyAdvisorRecommendationToEngine() },
+                            onQuickReconnectLastGame = { viewModel.quickReconnectLastGame() },
+                            onClearLastSessionRecord = { viewModel.clearLastSessionRecord() },
+                            onToggleNotificationShield = { viewModel.toggleNotificationShield() },
+                            onOpenDndPermissionSettings = { viewModel.openDndPermissionSettings() },
+                            onShutdownAndExitApp = {
+                                viewModel.stopAllBackgroundWorkAndExit(onExitRequested = onExitApp)
                             }
                         )
+                    }
 
-                        StatusToastBanner(
-                            message = statusBannerMessage,
-                            onDismiss = viewModel::dismissBanner
+                    RedCoreTab.RAM_BOOSTER -> {
+                        RamBoosterScreen(
+                            telemetry = telemetry,
+                            processes = optimizableProcesses,
+                            isBoosting = isBoosting,
+                            lastBoostReport = lastBoostReport,
+                            onExecuteDeepBoost = { viewModel.executeSuperBoost() },
+                            onToggleProcessWhitelist = { viewModel.toggleProcessWhitelist(it) },
+                            onTestNetworkPing = { viewModel.testNetworkPingNow() }
                         )
+                    }
 
-                        Box(
-                            modifier = Modifier
-                                .weight(1f)
-                                .fillMaxWidth()
-                        ) {
-                            when (selectedTab) {
-                                RedCoreTab.COMMAND_CENTER -> {
-                                    CommandCenterScreen(
-                                        telemetry = telemetry,
-                                        performanceMode = performanceMode,
-                                        triggerConfig = triggerConfig,
-                                        crosshairConfig = crosshairConfig,
-                                        lowEndConfig = lowEndConfig,
-                                        isBoosting = isBoosting,
-                                        boostProgress = boostProgress,
-                                        boostStageText = boostStageText,
-                                        lastBoostResult = lastBoostResult,
-                                        onSelectMode = viewModel::setPerformanceMode,
-                                        onRunSuperBoost = { viewModel.runSuperBoostNow() },
-                                        onToggleVolumeTriggers = { enabled ->
-                                            viewModel.updateTriggerConfig { it.copy(enabled = enabled) }
-                                        },
-                                        onToggleAutoClean = { enabled ->
-                                            viewModel.updateLowEndConfig { it.copy(autoCleanInBackground = enabled) }
-                                        },
-                                        onToggleCrosshair = { enabled ->
-                                            viewModel.updateCrosshairConfig { it.copy(enabledInApp = enabled) }
-                                        },
-                                        onNavigateToTab = viewModel::selectTab,
-                                        onTestNetworkPing = viewModel::testLivePingNow,
-                                        onOpenEdgeSidebar = { viewModel.setInAppSidebarExpanded(true) },
-                                        onEnableSystemFloatingBar = viewModel::activateOrToggleSystemFloatingSidebar,
-                                        isSystemOverlayRunning = isSystemOverlayRunning,
-                                        onRunCoolDown = viewModel::runCpuCoolDownNow,
-                                        isMasterRunning = isMasterRunning,
-                                        onToggleMasterStartOrExit = {
-                                            viewModel.toggleMasterStartOrStopAndExit(onExitApp)
-                                        },
-                                        isLiveMicActive = isLiveMicActive,
-                                        isRecordingClip = isRecordingVoiceClip,
-                                        isPlayingClip = isPlayingVoiceClip,
-                                        micInputLevel = micInputLevel,
-                                        voiceStatusText = voiceStatusText,
-                                        noiseGateEnabled = voiceNoiseGateEnabled,
-                                        hasMicPermission = viewModel::hasMicrophonePermission,
-                                        onSelectVoicePreset = viewModel::selectVoiceModPreset,
-                                        onToggleLiveMic = viewModel::toggleLiveMicrophoneVoiceChanger,
-                                        onStartOrStopClipTest = viewModel::startOrStopVoiceTestRecording,
-                                        onReplayRecordedClip = viewModel::replayRecordedVoiceSample,
-                                        onToggleNoiseGate = viewModel::setVoiceNoiseGate,
-                                        selectedDemoPhraseIndex = selectedVoiceDemoPhraseIndex,
-                                        onPlayReadyDemoWithoutMic = viewModel::playReadyVoiceSampleWithoutMic,
-                                        oneTapPrepStatus = oneTapPrepStatus,
-                                        activeGameTitle = activeGameProfile?.title,
-                                        onRunOneTapPrep = { viewModel.runOneTapGamePreparation() },
-                                        activeSession = activeGameSession,
-                                        onQuickReconnect = viewModel::quickReconnectToActiveGame,
-                                        smartThermalStatus = smartThermalStatus,
-                                        notificationShieldState = notificationShieldState,
-                                        onSelectThermalMode = viewModel::setSmartThermalMode,
-                                        onToggleNotificationShield = viewModel::toggleNotificationShield,
-                                        onOpenDndPermissionSettings = viewModel::openNotificationPolicyAccessSettings,
-                                        onToggleHudMetric = viewModel::toggleHudOverlayMetric,
-                                        onUpdateMagnifierZoom = { zoom ->
-                                            viewModel.updateLowEndConfig { it.copy(magnifierZoom = zoom) }
-                                        },
-                                        autoSettingsRecommendation = autoSettingsRecommendation,
-                                        onSelectAdvisorMode = viewModel::selectAdvisorPresetMode,
-                                        onApplyAdvisorRecommendations = viewModel::applyAdvisorRecommendedToolsNow
-                                    )
+                    RedCoreTab.ARSENAL_GFX -> {
+                        ArsenalGfxScreen(
+                            crosshairConfig = crosshairConfig,
+                            clonedButtonsConfig = clonedButtonsConfig,
+                            gfxResolution = gfxResolution,
+                            touchSamplingRate = touchSamplingRate,
+                            lowEndConfig = lowEndConfig,
+                            telemetry = telemetry,
+                            smartThermalStatus = smartThermalStatus,
+                            advisorPresetMode = advisorPresetMode,
+                            autoSettingsRecommendation = autoSettingsRecommendation,
+                            canDrawOverlays = overlayPermissionGranted,
+                            isAccessibilityRunning = accessibilityServiceEnabled,
+                            isSystemFloatingBarRunning = floatingOverlayRunning,
+                            fpsPillVisible = fpsHudOverlayEnabled,
+                            onUpdateCrosshair = { viewModel.updateCrosshairTransform(it) },
+                            onUpdateClonedButtons = { viewModel.updateClonedButtonsTransform(it) },
+                            onToggleClonedButtonsOverlay = {
+                                if (!overlayPermissionGranted) {
+                                    viewModel.openOverlayPermissionSettings()
+                                } else {
+                                    viewModel.toggleClonedButtonsMaster(!clonedButtonsConfig.enabled)
                                 }
-
-                                RedCoreTab.SHOULDER_TRIGGERS -> {
-                                    ShoulderTriggersScreen(
-                                        triggerConfig = triggerConfig,
-                                        crosshairConfig = crosshairConfig,
-                                        onUpdateConfig = viewModel::updateTriggerConfig,
-                                        onSimulateHardwareTrigger = { btn, isDown ->
-                                            viewModel.handleInAppVolumeTrigger(btn, isDown)
-                                        },
-                                        onOpenAccessibilitySettings = viewModel::openAccessibilitySettings,
-                                        clonedButtonsConfig = clonedButtonsConfig,
-                                        onUpdateClonedButtonsConfig = viewModel::updateClonedButtonsConfig,
-                                        onToggleClonedButtonsOverlay = viewModel::activateOrToggleClonedButtonsOverlay,
-                                        onSimulateClonedTap = { btn, isDown ->
-                                            viewModel.triggerClonedButtonInApp(btn, isDown)
-                                        }
-                                    )
+                            },
+                            onSimulateClonedTap = { btn, isDown ->
+                                viewModel.emitClonedTap(btn, isDown)
+                            },
+                            onOpenAccessibilitySettings = { viewModel.openAccessibilitySettings() },
+                            onSelectResolution = { viewModel.selectGfxResolution(it) },
+                            onSelectTouchRate = { viewModel.selectTouchSamplingRate(it) },
+                            onUpdateLowEnd = { viewModel.updateLowEndTransform(it) },
+                            onSelectSmartThermalMode = { viewModel.setSmartThermalMode(it) },
+                            onSelectAdvisorPreset = { viewModel.selectAdvisorPresetMode(it) },
+                            onApplyAdvisorPreset = { viewModel.applyAdvisorRecommendationToEngine() },
+                            onToggleFpsPill = { viewModel.toggleFpsHudOverlay(it) },
+                            onLaunchSystemFloatingSidebar = {
+                                if (floatingOverlayRunning) {
+                                    viewModel.stopFloatingSidebarOverlay()
+                                } else if (overlayPermissionGranted) {
+                                    viewModel.startFloatingSidebarOverlay()
+                                } else {
+                                    viewModel.openOverlayPermissionSettings()
                                 }
-
-                                RedCoreTab.RAM_BOOSTER -> {
-                                    RamBoosterScreen(
-                                        telemetry = telemetry,
-                                        lowEndConfig = lowEndConfig,
-                                        backgroundApps = backgroundApps,
-                                        isBoosting = isBoosting,
-                                        boostProgress = boostProgress,
-                                        boostStageText = boostStageText,
-                                        lastBoostResult = lastBoostResult,
-                                        onRunSuperBoost = { viewModel.runSuperBoostNow() },
-                                        onStopSingleApp = viewModel::stopSingleBackgroundApp,
-                                        onToggleWhitelist = viewModel::toggleAppWhitelist,
-                                        onOpenSystemAppInfo = viewModel::openSystemAppDetails,
-                                        onRefreshApps = viewModel::refreshInstalledAppsAndGames,
-                                        onUpdateLowEndConfig = viewModel::updateLowEndConfig
-                                    )
-                                }
-
-                                RedCoreTab.ARSENAL_GFX -> {
-                                    ArsenalGfxScreen(
-                                        crosshairConfig = crosshairConfig,
-                                        edgeSidebarConfig = edgeSidebarConfig,
-                                        lowEndConfig = lowEndConfig,
-                                        canDrawSystemOverlays = canDrawOverlays,
-                                        isSystemOverlayRunning = isSystemOverlayRunning,
-                                        onUpdateCrosshair = viewModel::updateCrosshairConfig,
-                                        onUpdateEdgeSidebar = viewModel::updateEdgeSidebarConfig,
-                                        onUpdateLowEnd = viewModel::updateLowEndConfig,
-                                        onOpenInAppSidebarPreview = { viewModel.setInAppSidebarExpanded(true) },
-                                        onEnableSystemFloatingSidebar = viewModel::activateOrToggleSystemFloatingSidebar,
-                                        onSelectAudioRadar = viewModel::selectAudioRadarPreset,
-                                        onSelectVoiceMod = viewModel::selectVoiceModPreset,
-                                        onOpenAccessibilityForOverlay = viewModel::openAccessibilitySettings,
-                                        isLiveMicActive = isLiveMicActive,
-                                        isRecordingClip = isRecordingVoiceClip,
-                                        isPlayingClip = isPlayingVoiceClip,
-                                        micInputLevel = micInputLevel,
-                                        voiceStatusText = voiceStatusText,
-                                        noiseGateEnabled = voiceNoiseGateEnabled,
-                                        hasMicPermission = viewModel::hasMicrophonePermission,
-                                        onToggleLiveMic = viewModel::toggleLiveMicrophoneVoiceChanger,
-                                        onStartOrStopClipTest = viewModel::startOrStopVoiceTestRecording,
-                                        onReplayRecordedClip = viewModel::replayRecordedVoiceSample,
-                                        onToggleNoiseGate = viewModel::setVoiceNoiseGate,
-                                        selectedDemoPhraseIndex = selectedVoiceDemoPhraseIndex,
-                                        onPlayReadyDemoWithoutMic = viewModel::playReadyVoiceSampleWithoutMic,
-                                        smartThermalStatus = smartThermalStatus,
-                                        notificationShieldState = notificationShieldState,
-                                        onSelectThermalMode = viewModel::setSmartThermalMode,
-                                        onToggleNotificationShield = viewModel::toggleNotificationShield,
-                                        onOpenDndPermissionSettings = viewModel::openNotificationPolicyAccessSettings,
-                                        onToggleHudMetric = viewModel::toggleHudOverlayMetric,
-                                        onUpdateMagnifierZoom = { zoom ->
-                                            viewModel.updateLowEndConfig { it.copy(magnifierZoom = zoom) }
-                                        },
-                                        autoSettingsRecommendation = autoSettingsRecommendation,
-                                        onSelectAdvisorMode = viewModel::selectAdvisorPresetMode,
-                                        onApplyAdvisorRecommendations = viewModel::applyAdvisorRecommendedToolsNow
-                                    )
-                                }
-
-                                RedCoreTab.GAME_SPACE -> {
-                                    GameSpaceLobbyScreen(
-                                        gameCatalog = gameCatalog,
-                                        activeProfile = activeGameProfile,
-                                        activeSession = activeGameSession,
-                                        oneTapPrepStatus = oneTapPrepStatus,
-                                        onLaunchWithProfile = viewModel::boostAndLaunchGame,
-                                        onApplyProfileOnly = { profile ->
-                                            viewModel.applyGameProfile(profile)
-                                        },
-                                        onSaveOrUpdateProfile = viewModel::saveOrUpdateGameProfile,
-                                        onAddCustomGame = viewModel::addCustomGameProfile,
-                                        onDuplicateProfile = viewModel::duplicateGameProfile,
-                                        onResetProfile = viewModel::resetGameProfileToDefault,
-                                        onRunOneTapPrep = { viewModel.runOneTapGamePreparation() },
-                                        onQuickReconnect = viewModel::quickReconnectToActiveGame
-                                    )
-                                }
-                            }
-                        }
+                            },
+                            onOpenOverlayPermissionSettings = { viewModel.openOverlayPermissionSettings() },
+                            onTestNetworkPing = { viewModel.testNetworkPingNow() }
+                        )
                     }
                 }
-
-                // Floating Edge-Swipe Game Genie / Game Turbo Sidebar & Vision Filter & AFK Black Screen
-                EdgeSwipeGameGenieOverlay(
-                    sidebarConfig = edgeSidebarConfig,
-                    isPanelExpanded = isInAppSidebarOpen,
-                    onSetPanelExpanded = viewModel::setInAppSidebarExpanded,
-                    telemetry = telemetry,
-                    performanceMode = performanceMode,
-                    triggerConfig = triggerConfig,
-                    crosshairConfig = crosshairConfig,
-                    lowEndConfig = lowEndConfig,
-                    canDrawSystemOverlays = canDrawOverlays,
-                    isSystemOverlayRunning = isSystemOverlayRunning,
-                    onRunInstantBoost = { viewModel.runSuperBoostNow() },
-                    onSelectPerformanceMode = viewModel::setPerformanceMode,
-                    onToggleTriggers = {
-                        viewModel.updateTriggerConfig { it.copy(enabled = !it.enabled) }
-                    },
-                    onToggleCrosshair = {
-                        viewModel.updateCrosshairConfig { it.copy(enabledInApp = !it.enabledInApp) }
-                    },
-                    onCycleVisionFilter = viewModel::cycleVisionFilter,
-                    onCycleAudioRadar = viewModel::cycleAudioRadar,
-                    onToggleMistouch = {
-                        viewModel.updateLowEndConfig { it.copy(mistouchPrevention = !it.mistouchPrevention) }
-                    },
-                    onToggleAfkBlackScreen = { afk ->
-                        viewModel.updateLowEndConfig { it.copy(afkBlackScreenSaver = afk) }
-                    },
-                    onSwapSidebarEdge = {
-                        viewModel.updateEdgeSidebarConfig { it.copy(isRightEdge = !it.isRightEdge) }
-                    },
-                    onActivateSystemFloatingBar = viewModel::activateOrToggleSystemFloatingSidebar,
-                    onRunCoolDown = viewModel::runCpuCoolDownNow,
-                    clonedButtonsConfig = clonedButtonsConfig,
-                    onToggleClonedButtonsOverlay = viewModel::activateOrToggleClonedButtonsOverlay,
-                    onToggleClonedButtonsLock = {
-                        viewModel.updateClonedButtonsConfig {
-                            it.copy(isLockedForPlay = !it.isLockedForPlay)
-                        }
-                    },
-                    isLiveMicActive = isLiveMicActive,
-                    onCycleVoiceMod = viewModel::cycleVoiceModPreset,
-                    onToggleLiveMic = viewModel::toggleLiveMicrophoneVoiceChanger,
-                    onShutdownAndExitApp = {
-                        viewModel.stopAllBackgroundWorkAndExit(onExitApp)
-                    }
-                )
             }
         }
-    }
-}
 
-private fun getTabIcons(tab: RedCoreTab): Pair<ImageVector, ImageVector> {
-    return when (tab) {
-        RedCoreTab.COMMAND_CENTER -> Icons.Filled.Dashboard to Icons.Outlined.Dashboard
-        RedCoreTab.SHOULDER_TRIGGERS -> Icons.Filled.VolumeUp to Icons.Outlined.VolumeUp
-        RedCoreTab.RAM_BOOSTER -> Icons.Filled.Memory to Icons.Outlined.Memory
-        RedCoreTab.ARSENAL_GFX -> Icons.Filled.GpsFixed to Icons.Outlined.GpsFixed
-        RedCoreTab.GAME_SPACE -> Icons.Filled.Gamepad to Icons.Outlined.Gamepad
+        // In-App Edge Swipe Game Genie Overlay & Dock
+        EdgeSwipeGameGenieOverlay(
+            sidebarEnabledInApp = true,
+            isPanelExpanded = edgeGenieExpanded,
+            onSetPanelExpanded = { viewModel.setEdgeGenieExpanded(it) },
+            telemetry = telemetry,
+            performanceMode = performanceMode,
+            crosshairConfig = crosshairConfig,
+            lowEndConfig = lowEndConfig,
+            clonedButtonsConfig = clonedButtonsConfig,
+            fpsPillVisible = fpsHudOverlayEnabled,
+            notificationShieldActive = notificationShieldState.enabled,
+            canDrawSystemOverlays = overlayPermissionGranted,
+            isSystemOverlayRunning = floatingOverlayRunning,
+            onRunInstantBoost = { viewModel.executeSuperBoost() },
+            onSelectPerformanceMode = { viewModel.selectPerformanceMode(it) },
+            onToggleCrosshair = { viewModel.toggleCrosshair(!crosshairConfig.enabled) },
+            onToggleFpsPill = { viewModel.toggleFpsHudOverlay(!fpsHudOverlayEnabled) },
+            onToggleNotificationShield = { viewModel.toggleNotificationShield() },
+            onToggleMistouch = { viewModel.toggleTouchEdgeReject(!lowEndConfig.touchEdgeRejectEnabled) },
+            onToggleBrightnessLock = { viewModel.toggleBrightnessLock(!lowEndConfig.brightnessLockEnabled) },
+            onToggleClonedButtonsOverlay = {
+                viewModel.toggleClonedButtonsMaster(!clonedButtonsConfig.enabled)
+            },
+            onToggleClonedButtonsLock = { viewModel.toggleClonedPositionsLocked() },
+            onActivateSystemFloatingBar = {
+                if (floatingOverlayRunning) {
+                    viewModel.stopFloatingSidebarOverlay()
+                } else if (overlayPermissionGranted) {
+                    viewModel.startFloatingSidebarOverlay()
+                } else {
+                    viewModel.openOverlayPermissionSettings()
+                }
+            },
+            onRunCoolDown = {
+                viewModel.setSmartThermalMode(com.example.model.SmartThermalMode.ECO_STABILITY)
+            },
+            onShutdownAndExitApp = {
+                viewModel.stopAllBackgroundWorkAndExit(onExitRequested = onExitApp)
+            }
+        )
     }
 }
 
 @Composable
-private fun RedCoreBottomNavigationBar(
+private fun HassanGamingBottomBar(
     selectedTab: RedCoreTab,
+    accentColor: Color,
+    myGamesCount: Int,
     onSelectTab: (RedCoreTab) -> Unit
 ) {
-    NavigationBar(
-        containerColor = ObsidianSurface,
-        contentColor = TitaniumWhite,
+    Surface(
         modifier = Modifier
-            .windowInsetsPadding(WindowInsets.navigationBars)
-            .testTag("bottom_navigation_bar")
+            .fillMaxWidth()
+            .navigationBarsPadding()
+            .testTag("bottom_navigation_bar"),
+        color = ObsidianSurface,
+        border = BorderStroke(1.dp, CarbonBorder)
     ) {
-        RedCoreTab.entries.forEach { tab ->
-            val selected = selectedTab == tab
-            val (filledIcon, outlinedIcon) = getTabIcons(tab)
-            NavigationBarItem(
-                selected = selected,
-                onClick = { onSelectTab(tab) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected) filledIcon else outlinedIcon,
-                        contentDescription = tab.titleAr
-                    )
-                },
-                label = {
-                    Text(
-                        text = tab.titleAr,
-                        fontSize = 11.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
-                        maxLines = 1
-                    )
-                },
-                colors = NavigationBarItemDefaults.colors(
-                    selectedIconColor = TitaniumWhite,
-                    selectedTextColor = CrimsonRed,
-                    indicatorColor = CrimsonRed.copy(alpha = 0.25f),
-                    unselectedIconColor = SilverMist,
-                    unselectedTextColor = SilverMist
-                ),
-                modifier = Modifier.testTag("nav_tab_${tab.route}")
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 8.dp, vertical = 6.dp),
+            horizontalArrangement = Arrangement.SpaceAround,
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            BottomNavTabItem(
+                tab = RedCoreTab.GAME_SPACE,
+                icon = Icons.Default.SportsEsports,
+                label = "MY GAMES ($myGamesCount)",
+                selected = selectedTab == RedCoreTab.GAME_SPACE,
+                accentColor = accentColor,
+                testTag = "nav_tab_GAME_SPACE",
+                onClick = { onSelectTab(RedCoreTab.GAME_SPACE) }
+            )
+            BottomNavTabItem(
+                tab = RedCoreTab.COMMAND_CENTER,
+                icon = Icons.Default.Speed,
+                label = "مركز القيادة",
+                selected = selectedTab == RedCoreTab.COMMAND_CENTER,
+                accentColor = accentColor,
+                testTag = "nav_tab_COMMAND_CENTER",
+                onClick = { onSelectTab(RedCoreTab.COMMAND_CENTER) }
+            )
+            BottomNavTabItem(
+                tab = RedCoreTab.ARSENAL_GFX,
+                icon = Icons.Default.Tune,
+                label = "أدوات اللعب",
+                selected = selectedTab == RedCoreTab.ARSENAL_GFX,
+                accentColor = accentColor,
+                testTag = "nav_tab_ARSENAL_GFX",
+                onClick = { onSelectTab(RedCoreTab.ARSENAL_GFX) }
+            )
+            BottomNavTabItem(
+                tab = RedCoreTab.RAM_BOOSTER,
+                icon = Icons.Default.Memory,
+                label = "الرام والشبكة",
+                selected = selectedTab == RedCoreTab.RAM_BOOSTER,
+                accentColor = accentColor,
+                testTag = "nav_tab_RAM_BOOSTER",
+                onClick = { onSelectTab(RedCoreTab.RAM_BOOSTER) }
             )
         }
     }
 }
 
 @Composable
-private fun RedCoreSideNavigationRail(
-    selectedTab: RedCoreTab,
-    onSelectTab: (RedCoreTab) -> Unit
+private fun BottomNavTabItem(
+    tab: RedCoreTab,
+    icon: ImageVector,
+    label: String,
+    selected: Boolean,
+    accentColor: Color,
+    testTag: String,
+    onClick: () -> Unit
 ) {
-    NavigationRail(
-        containerColor = ObsidianSurface,
-        contentColor = TitaniumWhite,
-        modifier = Modifier.fillMaxHeight()
+    Column(
+        modifier = Modifier
+            .clip(RoundedCornerShape(10.dp))
+            .background(if (selected) accentColor.copy(alpha = 0.16f) else Color.Transparent)
+            .clickable { onClick() }
+            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .testTag(testTag),
+        horizontalAlignment = Alignment.CenterHorizontally
     ) {
-        RedCoreTab.entries.forEach { tab ->
-            val selected = selectedTab == tab
-            val (filledIcon, outlinedIcon) = getTabIcons(tab)
-            NavigationRailItem(
-                selected = selected,
-                onClick = { onSelectTab(tab) },
-                icon = {
-                    Icon(
-                        imageVector = if (selected) filledIcon else outlinedIcon,
-                        contentDescription = tab.titleAr
-                    )
-                },
-                label = {
-                    Text(
-                        text = tab.titleAr,
-                        fontSize = 11.sp,
-                        fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                    )
-                },
-                colors = NavigationRailItemDefaults.colors(
-                    selectedIconColor = TitaniumWhite,
-                    selectedTextColor = CrimsonRed,
-                    indicatorColor = GunmetalCard,
-                    unselectedIconColor = SilverMist,
-                    unselectedTextColor = SilverMist
-                ),
-                modifier = Modifier.testTag("rail_tab_${tab.route}")
-            )
-        }
+        Icon(
+            imageVector = icon,
+            contentDescription = tab.titleAr,
+            tint = if (selected) accentColor else SilverMist,
+            modifier = Modifier.size(20.dp)
+        )
+        Spacer(modifier = Modifier.height(2.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelSmall,
+            fontSize = 10.sp,
+            fontWeight = if (selected) FontWeight.ExtraBold else FontWeight.Medium,
+            color = if (selected) TitaniumWhite else SilverMist
+        )
     }
 }

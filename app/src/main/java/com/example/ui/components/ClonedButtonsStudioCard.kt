@@ -39,8 +39,8 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.Restore
-import androidx.compose.material.icons.filled.VolumeUp
+import androidx.compose.material.icons.filled.Shield
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -80,11 +80,10 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.model.ClonedButtonMode
 import com.example.model.ClonedButtonsConfig
 import com.example.model.ClonedTouchButton
-import com.example.model.LowEndOptimizerConfig
-import com.example.model.TriggerFireMode
-import com.example.model.defaultClonedTouchButtons
+import com.example.model.LowEndDeviceConfig
 import com.example.service.TriggerEventBus
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
@@ -172,7 +171,7 @@ fun ClonedButtonsStudioCard(
                                     .padding(horizontal = 6.dp, vertical = 2.dp)
                             ) {
                                 Text(
-                                    text = "جديد PRO",
+                                    text = "PRO TOUCH",
                                     fontFamily = OrbitronFontFamily,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
@@ -181,7 +180,7 @@ fun ClonedButtonsStudioCard(
                             }
                         }
                         Text(
-                            text = "انسخ أي زر ثابت باللعبة وحرّكه لأي مكان مريح لإصبعك واضغطه بسهولة!",
+                            text = "انسخ أي زر ثابت باللعبة وحرّكه لأي مكان مريح لإصبعك على الشاشة",
                             style = MaterialTheme.typography.bodySmall,
                             color = SilverMist
                         )
@@ -189,9 +188,9 @@ fun ClonedButtonsStudioCard(
                 }
 
                 Switch(
-                    checked = config.masterEnabled,
+                    checked = config.enabled,
                     onCheckedChange = { enabled ->
-                        onUpdateConfig { it.copy(masterEnabled = enabled) }
+                        onUpdateConfig { it.copy(enabled = enabled) }
                     },
                     modifier = Modifier.testTag("cloned_buttons_master_switch"),
                     colors = SwitchDefaults.colors(
@@ -215,15 +214,15 @@ fun ClonedButtonsStudioCard(
                     verticalArrangement = Arrangement.spacedBy(4.dp)
                 ) {
                     Text(
-                        text = "💡 كيف تحل مشكلة الأزرار الثابتة في الألعاب؟",
+                        text = "💡 كيف تعمل الأزرار المنسوخة على الشاشة؟",
                         style = MaterialTheme.typography.bodySmall,
                         color = CyberCyan,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "1️⃣ ضع دائرة الهدف الصغير (🎯 C1) فوق الزر الأصلي الثابت باللعبة الذي لا يتحرك.\n" +
-                            "2️⃣ اسحب الزر المنسوخ الكبير (🔘 C1) وضعه في أي مكان مريح لإصبعك على الشاشة.\n" +
-                            "3️⃣ اضغط (🔒 قفل للعب): الآن كلما ضغطت على (C1) سيضغط البرنامج تلقائياً على مكان (🎯 C1)!",
+                        text = "1️⃣ ضع دائرة الهدف الصغير (🎯 C1) فوق الزر الأصلي الثابت باللعبة.\n" +
+                            "2️⃣ اسحب الزر المنسوخ الكبير (🔘 C1) وضعه في المكان المريح لإصبعك.\n" +
+                            "3️⃣ اضغط (🔒 قفل للعب): كلما لمست (C1) سيضغط البرنامج تلقائياً على موقع (🎯 C1).",
                         style = MaterialTheme.typography.bodySmall,
                         color = SilverMist,
                         fontSize = 11.sp
@@ -239,7 +238,7 @@ fun ClonedButtonsStudioCard(
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 Button(
-                    onClick = { onUpdateConfig { it.copy(isLockedForPlay = false) } },
+                    onClick = { onUpdateConfig { it.copy(editPositionsLocked = false) } },
                     modifier = Modifier
                         .weight(1f)
                         .height(42.dp)
@@ -247,8 +246,8 @@ fun ClonedButtonsStudioCard(
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (!config.isLockedForPlay) MoltenAmber else ObsidianSurface,
-                        contentColor = if (!config.isLockedForPlay) ObsidianBlack else SilverMist
+                        containerColor = if (!config.editPositionsLocked) MoltenAmber else ObsidianSurface,
+                        contentColor = if (!config.editPositionsLocked) ObsidianBlack else SilverMist
                     )
                 ) {
                     Icon(
@@ -265,7 +264,7 @@ fun ClonedButtonsStudioCard(
                 }
 
                 Button(
-                    onClick = { onUpdateConfig { it.copy(isLockedForPlay = true) } },
+                    onClick = { onUpdateConfig { it.copy(editPositionsLocked = true) } },
                     modifier = Modifier
                         .weight(1f)
                         .height(42.dp)
@@ -273,8 +272,8 @@ fun ClonedButtonsStudioCard(
                     shape = RoundedCornerShape(10.dp),
                     contentPadding = PaddingValues(horizontal = 8.dp),
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = if (config.isLockedForPlay) MatrixGreen else ObsidianSurface,
-                        contentColor = if (config.isLockedForPlay) ObsidianBlack else SilverMist
+                        containerColor = if (config.editPositionsLocked) MatrixGreen else ObsidianSurface,
+                        contentColor = if (config.editPositionsLocked) ObsidianBlack else SilverMist
                     )
                 ) {
                     Icon(
@@ -303,7 +302,7 @@ fun ClonedButtonsStudioCard(
                     .background(ObsidianBlack)
                     .border(
                         width = 1.5.dp,
-                        color = if (config.isLockedForPlay) MatrixGreen.copy(alpha = 0.7f) else MoltenAmber.copy(alpha = 0.7f),
+                        color = if (config.editPositionsLocked) MatrixGreen.copy(alpha = 0.7f) else MoltenAmber.copy(alpha = 0.7f),
                         shape = RoundedCornerShape(14.dp)
                     )
                     .testTag("cloned_buttons_arena")
@@ -311,12 +310,10 @@ fun ClonedButtonsStudioCard(
                 val arenaW = constraints.maxWidth.toFloat().coerceAtLeast(1f)
                 val arenaH = constraints.maxHeight.toFloat().coerceAtLeast(1f)
 
-                // Background Grid + Simulated Fixed Game HUD Buttons + Laser Links
                 Canvas(modifier = Modifier.fillMaxSize()) {
                     val w = size.width
                     val h = size.height
 
-                    // Tactical Grid
                     val step = w / 8f
                     for (i in 1..7) {
                         drawLine(
@@ -336,16 +333,15 @@ fun ClonedButtonsStudioCard(
                         )
                     }
 
-                    // Draw Laser Links connecting each Cloned Button (C1..C4) to its Target (🎯C1..🎯C4)
                     val dashEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
                     for (btn in config.buttons.filter { it.enabled }) {
                         val btnColor = Color(btn.colorHex)
-                        val startPt = Offset(btn.buttonXRatio * w, btn.buttonYRatio * h)
-                        val targetPt = Offset(btn.targetXRatio * w, btn.targetYRatio * h)
+                        val startPt = Offset(btn.sourceX * w, btn.sourceY * h)
+                        val targetPt = Offset(btn.targetX * w, btn.targetY * h)
                         val isFiringNow = (lastActiveId == btn.id) ||
                             (selectedButtonId == btn.id && System.currentTimeMillis() - lastPulseTimeMs < 500L)
 
-                        if (!config.isLockedForPlay || isFiringNow) {
+                        if (!config.editPositionsLocked || isFiringNow) {
                             drawLine(
                                 color = if (isFiringNow) MatrixGreen else btnColor.copy(alpha = 0.75f),
                                 start = startPt,
@@ -356,7 +352,6 @@ fun ClonedButtonsStudioCard(
                             )
                         }
 
-                        // If firing in Locked Play mode, draw a bright impact burst at the target!
                         if (isFiringNow) {
                             drawCircle(
                                 color = btnColor.copy(alpha = 0.35f),
@@ -373,7 +368,6 @@ fun ClonedButtonsStudioCard(
                     }
                 }
 
-                // Simulated Unmovable Game Buttons in Corners (so user can see how fixed buttons work)
                 FixedGameButtonHint(
                     label = "⚙️ زر إعدادات ثابت",
                     modifier = Modifier
@@ -393,7 +387,6 @@ fun ClonedButtonsStudioCard(
                         .padding(bottom = 32.dp, end = 14.dp)
                 )
 
-                // Top Status Bar inside Arena
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -408,12 +401,12 @@ fun ClonedButtonsStudioCard(
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Text(
-                            text = if (config.isLockedForPlay)
+                            text = if (config.editPositionsLocked)
                                 "🔒 وضع اللعب: اضغط على (C1/C2) ليضغط تلقائياً على الهدف!"
                             else
                                 "🔓 وضع التعديل: اسحب (C1) للمكان المريح واسحب (🎯C1) للزر الثابت",
                             style = MaterialTheme.typography.bodySmall,
-                            color = if (config.isLockedForPlay) MatrixGreen else MoltenAmber,
+                            color = if (config.editPositionsLocked) MatrixGreen else MoltenAmber,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold
                         )
@@ -435,20 +428,18 @@ fun ClonedButtonsStudioCard(
                     }
                 }
 
-                val btnSizeDp = config.buttonSizeDp.coerceIn(40f, 68f).dp
-                val btnRadiusPx = with(density) { (btnSizeDp / 2).toPx() }
                 val targetSizeDp = 36.dp
                 val targetRadiusPx = with(density) { (targetSizeDp / 2).toPx() }
 
-                // Render Target Nodes (🎯 C1..C4) and Movable Cloned Buttons (🔘 C1..C4)
                 config.buttons.filter { it.enabled }.forEach { btn ->
                     val btnColor = Color(btn.colorHex)
+                    val btnSizeDp = btn.buttonSizeDp.coerceIn(38, 78).dp
+                    val btnRadiusPx = with(density) { (btnSizeDp / 2).toPx() }
                     val isFiring = (lastActiveId == btn.id) ||
                         (selectedButtonId == btn.id && System.currentTimeMillis() - lastPulseTimeMs < 450L)
 
-                    // 1. Target Node (🎯 Original Unmovable Button position)
-                    val targetOffsetX = ((btn.targetXRatio * arenaW) - targetRadiusPx).roundToInt()
-                    val targetOffsetY = ((btn.targetYRatio * arenaH) - targetRadiusPx).roundToInt()
+                    val targetOffsetX = ((btn.targetX * arenaW) - targetRadiusPx).roundToInt()
+                    val targetOffsetY = ((btn.targetY * arenaH) - targetRadiusPx).roundToInt()
 
                     Box(
                         modifier = Modifier
@@ -464,19 +455,19 @@ fun ClonedButtonsStudioCard(
                                 color = if (isFiring) TitaniumWhite else btnColor,
                                 shape = CircleShape
                             )
-                            .pointerInput(btn.id, config.isLockedForPlay) {
-                                if (!config.isLockedForPlay) {
+                            .pointerInput(btn.id, config.editPositionsLocked) {
+                                if (!config.editPositionsLocked) {
                                     detectDragGestures { change, dragAmount ->
                                         change.consume()
                                         selectedButtonId = btn.id
-                                        val nx = (((btn.targetXRatio * arenaW) + dragAmount.x) / arenaW)
+                                        val nx = (((btn.targetX * arenaW) + dragAmount.x) / arenaW)
                                             .coerceIn(0.06f, 0.94f)
-                                        val ny = (((btn.targetYRatio * arenaH) + dragAmount.y) / arenaH)
+                                        val ny = (((btn.targetY * arenaH) + dragAmount.y) / arenaH)
                                             .coerceIn(0.12f, 0.88f)
                                         onUpdateConfig { cur ->
                                             cur.copy(
                                                 buttons = cur.buttons.map {
-                                                    if (it.id == btn.id) it.copy(targetXRatio = nx, targetYRatio = ny) else it
+                                                    if (it.id == btn.id) it.copy(targetX = nx, targetY = ny) else it
                                                 }
                                             )
                                         }
@@ -486,7 +477,7 @@ fun ClonedButtonsStudioCard(
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
-                            text = if (isFiring) "💥" else "🎯${btn.badge}",
+                            text = if (isFiring) "💥" else "🎯${btn.label}",
                             fontFamily = OrbitronFontFamily,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
@@ -494,9 +485,8 @@ fun ClonedButtonsStudioCard(
                         )
                     }
 
-                    // 2. Cloned Movable Button Node (🔘 C1..C4 where user taps)
-                    val btnOffsetX = ((btn.buttonXRatio * arenaW) - btnRadiusPx).roundToInt()
-                    val btnOffsetY = ((btn.buttonYRatio * arenaH) - btnRadiusPx).roundToInt()
+                    val btnOffsetX = ((btn.sourceX * arenaW) - btnRadiusPx).roundToInt()
+                    val btnOffsetY = ((btn.sourceY * arenaH) - btnRadiusPx).roundToInt()
 
                     Box(
                         modifier = Modifier
@@ -512,19 +502,19 @@ fun ClonedButtonsStudioCard(
                                 color = if (isFiring) TitaniumWhite else btnColor,
                                 shape = CircleShape
                             )
-                            .pointerInput(btn.id, config.isLockedForPlay) {
-                                if (!config.isLockedForPlay) {
+                            .pointerInput(btn.id, config.editPositionsLocked) {
+                                if (!config.editPositionsLocked) {
                                     detectDragGestures { change, dragAmount ->
                                         change.consume()
                                         selectedButtonId = btn.id
-                                        val nx = (((btn.buttonXRatio * arenaW) + dragAmount.x) / arenaW)
+                                        val nx = (((btn.sourceX * arenaW) + dragAmount.x) / arenaW)
                                             .coerceIn(0.06f, 0.94f)
-                                        val ny = (((btn.buttonYRatio * arenaH) + dragAmount.y) / arenaH)
+                                        val ny = (((btn.sourceY * arenaH) + dragAmount.y) / arenaH)
                                             .coerceIn(0.12f, 0.88f)
                                         onUpdateConfig { cur ->
                                             cur.copy(
                                                 buttons = cur.buttons.map {
-                                                    if (it.id == btn.id) it.copy(buttonXRatio = nx, buttonYRatio = ny) else it
+                                                    if (it.id == btn.id) it.copy(sourceX = nx, sourceY = ny) else it
                                                 }
                                             )
                                         }
@@ -541,19 +531,19 @@ fun ClonedButtonsStudioCard(
                                     )
                                 }
                             }
-                            .testTag("cloned_btn_node_${btn.badge}"),
+                            .testTag("cloned_btn_node_${btn.label}"),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
                             Text(
-                                text = btn.badge,
+                                text = btn.label,
                                 fontFamily = OrbitronFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
                                 color = if (isFiring) ObsidianBlack else TitaniumWhite
                             )
                             Text(
-                                text = if (config.isLockedForPlay) "اضغطني" else "حركني",
+                                text = if (config.editPositionsLocked) "اضغطني" else "حركني",
                                 style = MaterialTheme.typography.bodySmall,
                                 fontSize = 8.sp,
                                 color = if (isFiring) ObsidianBlack else btnColor,
@@ -581,7 +571,7 @@ fun ClonedButtonsStudioCard(
                     modifier = Modifier
                         .clip(RoundedCornerShape(6.dp))
                         .clickable {
-                            onUpdateConfig { it.copy(buttons = defaultClonedTouchButtons()) }
+                            onUpdateConfig { it.copy(buttons = ClonedButtonsConfig.defaultClonedButtons()) }
                         }
                         .padding(horizontal = 6.dp, vertical = 2.dp),
                     verticalAlignment = Alignment.CenterVertically
@@ -626,7 +616,7 @@ fun ClonedButtonsStudioCard(
                                     }
                                 }
                             }
-                            .testTag("select_cloned_slot_${btn.badge}"),
+                            .testTag("select_cloned_slot_${btn.label}"),
                         shape = RoundedCornerShape(10.dp),
                         color = if (isSelected) btnColor.copy(alpha = 0.22f) else ObsidianSurface,
                         border = BorderStroke(
@@ -639,7 +629,7 @@ fun ClonedButtonsStudioCard(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Text(
-                                text = btn.badge,
+                                text = btn.label,
                                 fontFamily = OrbitronFontFamily,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 13.sp,
@@ -660,7 +650,7 @@ fun ClonedButtonsStudioCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            // Selected Cloned Button Detail Settings (Enable/Disable + Fire Mode + Size)
+            // Selected Cloned Button Detail Settings
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = RoundedCornerShape(12.dp),
@@ -675,15 +665,15 @@ fun ClonedButtonsStudioCard(
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
                             Text(
-                                text = "${selectedButton.labelAr} (${selectedButton.badge})",
+                                text = "${selectedButton.actionTitleAr} (${selectedButton.label})",
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = TitaniumWhite,
                                 fontWeight = FontWeight.Bold
                             )
-                            val bx = (selectedButton.buttonXRatio * 100).roundToInt()
-                            val by = (selectedButton.buttonYRatio * 100).roundToInt()
-                            val tx = (selectedButton.targetXRatio * 100).roundToInt()
-                            val ty = (selectedButton.targetYRatio * 100).roundToInt()
+                            val bx = (selectedButton.sourceX * 100).roundToInt()
+                            val by = (selectedButton.sourceY * 100).roundToInt()
+                            val tx = (selectedButton.targetX * 100).roundToInt()
+                            val ty = (selectedButton.targetY * 100).roundToInt()
                             Text(
                                 text = "موقع الزر: ($bx%, $by%)  ⬅️  يضغط الهدف: ($tx%, $ty%)",
                                 fontFamily = OrbitronFontFamily,
@@ -712,13 +702,13 @@ fun ClonedButtonsStudioCard(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Fire Mode Selector for this Cloned Button
+                    // Mode Selector for this Cloned Button
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        TriggerFireMode.entries.forEach { mode ->
-                            val active = selectedButton.fireMode == mode
+                        ClonedButtonMode.entries.forEach { mode ->
+                            val active = selectedButton.mode == mode
                             val btnAccent = Color(selectedButton.colorHex)
                             Box(
                                 modifier = Modifier
@@ -730,7 +720,7 @@ fun ClonedButtonsStudioCard(
                                         onUpdateConfig { cur ->
                                             cur.copy(
                                                 buttons = cur.buttons.map {
-                                                    if (it.id == selectedButton.id) it.copy(fireMode = mode) else it
+                                                    if (it.id == selectedButton.id) it.copy(mode = mode) else it
                                                 }
                                             )
                                         }
@@ -739,8 +729,8 @@ fun ClonedButtonsStudioCard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = mode.badge,
-                                    fontFamily = OrbitronFontFamily,
+                                    text = mode.titleAr.substringBefore(" ("),
+                                    style = MaterialTheme.typography.labelSmall,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (active) btnAccent else SilverMist
@@ -757,12 +747,12 @@ fun ClonedButtonsStudioCard(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = "حجم الأزرار المنسوخة وشفافيتها:",
+                            text = "حجم الزر المنسوخ وشفافيته:",
                             style = MaterialTheme.typography.bodySmall,
                             color = SilverMist
                         )
                         Text(
-                            text = "${config.buttonSizeDp.roundToInt()} DP  •  ${(config.buttonOpacity * 100).roundToInt()}%",
+                            text = "${selectedButton.buttonSizeDp} DP  •  ${(selectedButton.opacity * 100).roundToInt()}%",
                             fontFamily = OrbitronFontFamily,
                             fontSize = 11.sp,
                             color = CyberCyan,
@@ -770,8 +760,16 @@ fun ClonedButtonsStudioCard(
                         )
                     }
                     Slider(
-                        value = config.buttonSizeDp,
-                        onValueChange = { sz -> onUpdateConfig { it.copy(buttonSizeDp = sz) } },
+                        value = selectedButton.buttonSizeDp.toFloat(),
+                        onValueChange = { sz ->
+                            onUpdateConfig { cur ->
+                                cur.copy(
+                                    buttons = cur.buttons.map {
+                                        if (it.id == selectedButton.id) it.copy(buttonSizeDp = sz.roundToInt()) else it
+                                    }
+                                )
+                            }
+                        },
                         valueRange = 38f..78f,
                         colors = SliderDefaults.colors(
                             thumbColor = CyberCyan,
@@ -792,8 +790,8 @@ fun ClonedButtonsStudioCard(
                     .testTag("launch_cloned_buttons_overlay_btn"),
                 shape = CutCornerShape(10.dp),
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = if (config.systemOverlayEnabled) MatrixGreen else CrimsonRed,
-                    contentColor = if (config.systemOverlayEnabled) ObsidianBlack else Color.White
+                    containerColor = if (config.enabled) MatrixGreen else CrimsonRed,
+                    contentColor = if (config.enabled) ObsidianBlack else Color.White
                 )
             ) {
                 Icon(
@@ -803,7 +801,7 @@ fun ClonedButtonsStudioCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = if (config.systemOverlayEnabled)
+                    text = if (config.enabled)
                         "✓ الأزرار المنسوخة عائمة الآن فوق الألعاب (اضغط لإخفائها)"
                     else
                         "🔘 إظهار الأزرار المنسوخة (C1-C4) عائمـة فوق الألعاب الآن",
@@ -861,21 +859,14 @@ private fun FixedGameButtonHint(
 }
 
 /**
- * GG GameBox Pro Environment & DNS Optimizer Card (مميزات GG GameBox الاحترافية).
+ * GG GameBox Pro Environment & Network Optimizer Card.
  */
 @Composable
 fun GameBoxEnvironmentCard(
-    lowEndConfig: LowEndOptimizerConfig,
-    onUpdateLowEnd: ((LowEndOptimizerConfig) -> LowEndOptimizerConfig) -> Unit,
+    lowEndConfig: LowEndDeviceConfig,
+    onUpdateLowEnd: ((LowEndDeviceConfig) -> LowEndDeviceConfig) -> Unit,
     onTestNetworkPing: () -> Unit = {}
 ) {
-    val dnsPresets = listOf(
-        "Cloudflare 1.1.1.1 (أسرع استجابة بنج)",
-        "Google DNS 8.8.8.8 (ثبات عالي للاتصال)",
-        "Quad9 Gaming 9.9.9.9 (حماية ومنع التقطيع)",
-        "OpenDNS Pro 208.67.222.222 (مسار دولي سريع)"
-    )
-
     Surface(
         modifier = Modifier
             .fillMaxWidth()
@@ -895,13 +886,13 @@ fun GameBoxEnvironmentCard(
                 Spacer(modifier = Modifier.width(8.dp))
                 Column {
                     Text(
-                        text = "مركز بيئة اللعب والشبكة الذكي (GG GameBox Pro)",
+                        text = "مركز بيئة اللعب والشبكة الذكي (Gaming Environment)",
                         style = MaterialTheme.typography.titleSmall,
                         color = TitaniumWhite,
                         fontWeight = FontWeight.Bold
                     )
                     Text(
-                        text = "مُبدّل سيرفرات DNS لتخفيض البنج + قفل السطوع والصوت المستقل للألعاب",
+                        text = "أولوية حزم الشبكة للألعاب + قفل السطوع المستقل + حماية اللمس",
                         style = MaterialTheme.typography.bodySmall,
                         color = SilverMist
                     )
@@ -910,136 +901,7 @@ fun GameBoxEnvironmentCard(
 
             Spacer(modifier = Modifier.height(12.dp))
 
-            Text(
-                text = "سيرفر DNS السريع لتقليل البنج (Gaming DNS Changer):",
-                style = MaterialTheme.typography.bodySmall,
-                color = SilverMist
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                dnsPresets.forEach { dns ->
-                    val selected = lowEndConfig.dnsServerPreset == dns
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) ElectricPurple.copy(alpha = 0.2f) else ObsidianSurface)
-                            .border(
-                                1.dp,
-                                if (selected) ElectricPurple else CarbonBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable {
-                                onUpdateLowEnd { it.copy(dnsServerPreset = dns) }
-                                onTestNetworkPing()
-                            }
-                            .padding(horizontal = 12.dp, vertical = 8.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = dns,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (selected) TitaniumWhite else SilverMist,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                            )
-                            if (selected) {
-                                Text(
-                                    text = "DNS ON",
-                                    fontFamily = OrbitronFontFamily,
-                                    fontSize = 10.sp,
-                                    color = ElectricPurple,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            // Independent Game Brightness Slider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.BrightnessHigh,
-                        contentDescription = null,
-                        tint = MoltenAmber,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "سطوع الشاشة الثابت أثناء اللعب:",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TitaniumWhite
-                    )
-                }
-                Text(
-                    text = "${lowEndConfig.customBrightnessLevel}%",
-                    fontFamily = OrbitronFontFamily,
-                    fontSize = 12.sp,
-                    color = MoltenAmber,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Slider(
-                value = lowEndConfig.customBrightnessLevel.toFloat(),
-                onValueChange = { v -> onUpdateLowEnd { it.copy(customBrightnessLevel = v.roundToInt()) } },
-                valueRange = 25f..100f,
-                colors = SliderDefaults.colors(
-                    thumbColor = MoltenAmber,
-                    activeTrackColor = MoltenAmber
-                )
-            )
-
-            // Independent Game Media Volume Slider
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.VolumeUp,
-                        contentDescription = null,
-                        tint = CyberCyan,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "قوة صوت اللعبة والمؤثرات (Game Audio):",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TitaniumWhite
-                    )
-                }
-                Text(
-                    text = "${lowEndConfig.gameMediaVolumePercent}%",
-                    fontFamily = OrbitronFontFamily,
-                    fontSize = 12.sp,
-                    color = CyberCyan,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-            Slider(
-                value = lowEndConfig.gameMediaVolumePercent.toFloat(),
-                onValueChange = { v -> onUpdateLowEnd { it.copy(gameMediaVolumePercent = v.roundToInt()) } },
-                valueRange = 10f..100f,
-                colors = SliderDefaults.colors(
-                    thumbColor = CyberCyan,
-                    activeTrackColor = CyberCyan
-                )
-            )
-
-            // Auto-Restore Settings on Game Exit
+            // Wi-Fi Low Latency Priority Toggle
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -1054,21 +916,21 @@ fun GameBoxEnvironmentCard(
                     modifier = Modifier.weight(1f)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Restore,
+                        imageVector = Icons.Default.Wifi,
                         contentDescription = null,
-                        tint = MatrixGreen,
+                        tint = CyberCyan,
                         modifier = Modifier.size(20.dp)
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Column {
                         Text(
-                            text = "استعادة إعدادات الجوال تلقائياً بعد اللعب",
+                            text = "أولوية الشبكة وتقليل البنج (Wi-Fi Low-Latency)",
                             style = MaterialTheme.typography.bodySmall,
                             color = TitaniumWhite,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "يعيد السطوع والصوت والشبكة لوضعها الطبيعي فور الخروج من اللعبة",
+                            text = "يمنع التحديثات الخلفية من سحب سرعة الاتصال أثناء اللعب",
                             style = MaterialTheme.typography.bodySmall,
                             color = SilverMist,
                             fontSize = 11.sp
@@ -1076,8 +938,110 @@ fun GameBoxEnvironmentCard(
                     }
                 }
                 Switch(
-                    checked = lowEndConfig.autoRestoreSettingsOnExit,
-                    onCheckedChange = { v -> onUpdateLowEnd { it.copy(autoRestoreSettingsOnExit = v) } },
+                    checked = lowEndConfig.wiFiPriorityEnabled,
+                    onCheckedChange = { v ->
+                        onUpdateLowEnd { it.copy(wiFiPriorityEnabled = v) }
+                        onTestNetworkPing()
+                    },
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = ObsidianBlack,
+                        checkedTrackColor = CyberCyan
+                    )
+                )
+            }
+
+            Spacer(modifier = Modifier.height(10.dp))
+
+            // Independent Game Brightness Lock Slider
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(
+                        imageVector = Icons.Default.BrightnessHigh,
+                        contentDescription = null,
+                        tint = MoltenAmber,
+                        modifier = Modifier.size(18.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "قفل سطوع الشاشة الثابت أثناء اللعب:",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = TitaniumWhite
+                    )
+                }
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = "${lowEndConfig.lockedBrightnessPercent}%",
+                        fontFamily = OrbitronFontFamily,
+                        fontSize = 12.sp,
+                        color = MoltenAmber,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Switch(
+                        checked = lowEndConfig.brightnessLockEnabled,
+                        onCheckedChange = { v -> onUpdateLowEnd { it.copy(brightnessLockEnabled = v) } },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = ObsidianBlack,
+                            checkedTrackColor = MoltenAmber
+                        )
+                    )
+                }
+            }
+            Slider(
+                value = lowEndConfig.lockedBrightnessPercent.toFloat(),
+                onValueChange = { v -> onUpdateLowEnd { it.copy(lockedBrightnessPercent = v.roundToInt()) } },
+                valueRange = 25f..100f,
+                colors = SliderDefaults.colors(
+                    thumbColor = MoltenAmber,
+                    activeTrackColor = MoltenAmber
+                )
+            )
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            // Edge Touch Reject Protection
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(10.dp))
+                    .background(ObsidianSurface)
+                    .padding(10.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier.weight(1f)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = null,
+                        tint = MatrixGreen,
+                        modifier = Modifier.size(20.dp)
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "حماية حواف الشاشة من اللمس الخاطئ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TitaniumWhite,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "يمنع الخروج غير المقصود من اللعبة عند مسك الهاتف بالعرض",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SilverMist,
+                            fontSize = 11.sp
+                        )
+                    }
+                }
+                Switch(
+                    checked = lowEndConfig.touchEdgeRejectEnabled,
+                    onCheckedChange = { v -> onUpdateLowEnd { it.copy(touchEdgeRejectEnabled = v) } },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = ObsidianBlack,
                         checkedTrackColor = MatrixGreen
@@ -1089,9 +1053,7 @@ fun GameBoxEnvironmentCard(
 }
 
 /**
- * Custom App Icon & Logo Studio Card (تخصيص صورة وأيقونة البرنامج).
- * Lets the user preview/select a custom emblem from their gallery via Android Photo Picker
- * and guides them on attaching an image in chat for the home screen launcher icon.
+ * Custom App Icon & Logo Studio Card.
  */
 @Composable
 fun CustomAppIconStudioCard(
@@ -1166,7 +1128,7 @@ fun CustomAppIconStudioCard(
                     fontWeight = FontWeight.Bold
                 )
                 Text(
-                    text = "اختر صورة من استوديو جوالك لتجربتها كشعار داخل التطبيق، أو أرفق صورتك في المحادثة لنثبتها كأيقونة رسمية للـ APK!",
+                    text = "اختر صورة من استوديو جوالك لمعاينتها كشعار داخل مركز الألعاب",
                     style = MaterialTheme.typography.bodySmall,
                     color = SilverMist,
                     fontSize = 11.sp
@@ -1201,4 +1163,3 @@ fun CustomAppIconStudioCard(
         }
     }
 }
-

@@ -1,128 +1,192 @@
 package com.example.service
 
 import android.app.Service
-import android.content.Context
 import android.content.Intent
-import android.graphics.Canvas
-import android.graphics.Color
-import android.graphics.Paint
-import android.graphics.Path
 import android.graphics.PixelFormat
-import android.graphics.RectF
 import android.os.Build
 import android.os.IBinder
 import android.provider.Settings
 import android.view.Gravity
-import android.view.MotionEvent
-import android.view.View
 import android.view.WindowManager
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.background
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.CutCornerShape
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ControlCamera
+import androidx.compose.material.icons.filled.GpsFixed
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.PowerSettingsNew
+import androidx.compose.material.icons.filled.Speed
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.ComposeView
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.LifecycleRegistry
+import androidx.lifecycle.ViewModelStore
+import androidx.lifecycle.ViewModelStoreOwner
+import androidx.lifecycle.setViewTreeLifecycleOwner
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
+import androidx.savedstate.SavedStateRegistry
+import androidx.savedstate.SavedStateRegistryController
+import androidx.savedstate.SavedStateRegistryOwner
+import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import com.example.MainActivity
-import com.example.model.ClonedButtonsConfig
+import com.example.data.HardwareTelemetryEngine
+import com.example.data.SystemBoosterManager
+import com.example.model.ClonedButtonMode
 import com.example.model.ClonedTouchButton
 import com.example.model.CrosshairConfig
 import com.example.model.CrosshairStyle
+import com.example.model.HardwareTelemetry
 import com.example.model.PerformanceMode
-import com.example.model.ScreenVisionFilter
-import kotlin.math.abs
+import kotlin.math.roundToInt
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
-import kotlinx.coroutines.flow.collectLatest
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
 import kotlinx.coroutines.launch
 
+/**
+ * Lightweight In-Game Overlay Service for Hassan Games Gaming Center.
+ * Provides:
+ * 1. Draggable Edge Sidebar with instant Gaming Mode controls & telemetry.
+ * 2. Floating Crosshair Overlay (attached only when enabled).
+ * 3. Floating Mini FPS/Temp HUD (attached only when enabled).
+ * 4. Floating On-Screen Cloned Touch Buttons C1-C4 (attached only when enabled).
+ */
 class FloatingGameSidebarService : Service() {
 
+    private lateinit var windowManager: WindowManager
+    private lateinit var telemetryEngine: HardwareTelemetryEngine
+    private lateinit var boosterManager: SystemBoosterManager
     private val serviceScope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
-    private var windowManager: WindowManager? = null
 
-    private var edgeHandleView: FloatingEdgeHandleView? = null
-    private var handleLayoutParams: WindowManager.LayoutParams? = null
+    private var sidebarComposeView: ComposeView? = null
+    private var sidebarParams: WindowManager.LayoutParams? = null
+    private var sidebarOwner: OverlayComposeLifecycleOwner? = null
 
-    private var expandedPanelView: FloatingTurboPanelView? = null
-    private var isPanelExpanded = false
+    private var crosshairComposeView: ComposeView? = null
+    private var crosshairParams: WindowManager.LayoutParams? = null
+    private var crosshairOwner: OverlayComposeLifecycleOwner? = null
 
-    private var crosshairView: OverlayCrosshairView? = null
-    private var visionFilterView: View? = null
-    private var hudPillView: FloatingHudPillOverlayView? = null
-    private var hudPillParams: WindowManager.LayoutParams? = null
-    private var magnifierView: FloatingMagnifierOverlayView? = null
-    private var magnifierParams: WindowManager.LayoutParams? = null
-    private val clonedButtonViews = mutableMapOf<Int, View>()
-    private val clonedTargetViews = mutableMapOf<Int, View>()
+    private var fpsHudComposeView: ComposeView? = null
+    private var fpsHudParams: WindowManager.LayoutParams? = null
+    private var fpsHudOwner: OverlayComposeLifecycleOwner? = null
+
+    private data class ClonedOverlayHolder(
+        val buttonId: Int,
+        val sourceView: ComposeView,
+        val sourceParams: WindowManager.LayoutParams,
+        val sourceOwner: OverlayComposeLifecycleOwner,
+        var targetView: ComposeView? = null,
+        var targetParams: WindowManager.LayoutParams? = null,
+        var targetOwner: OverlayComposeLifecycleOwner? = null
+    )
+
+    private val clonedOverlayHolders = mutableMapOf<Int, ClonedOverlayHolder>()
+
+    private var crosshairObserverJob: Job? = null
+    private var clonedObserverJob: Job? = null
+    private var shutdownObserverJob: Job? = null
+
+    private val fpsHudEnabledState = mutableStateOf(false)
 
     override fun onBind(intent: Intent?): IBinder? = null
 
     override fun onCreate() {
         super.onCreate()
+        windowManager = getSystemService(WINDOW_SERVICE) as WindowManager
+        telemetryEngine = HardwareTelemetryEngine(applicationContext)
+        boosterManager = SystemBoosterManager(applicationContext)
+
         if (!Settings.canDrawOverlays(this)) {
+            TriggerEventBus.setOverlayRunning(false)
             stopSelf()
             return
         }
-        windowManager = getSystemService(Context.WINDOW_SERVICE) as? WindowManager
-        TriggerEventBus.setOverlayServiceRunning(true)
 
-        setupEdgeHandleOverlay()
-
-        serviceScope.launch {
-            TriggerEventBus.edgeSidebarConfig.collectLatest { cfg ->
-                val lowEnd = TriggerEventBus.lowEndConfig.value
-                val anyExtraOverlay = TriggerEventBus.clonedButtonsConfig.value.systemOverlayEnabled ||
-                    lowEnd.fpsOverlayEnabled || lowEnd.tempOverlayEnabled ||
-                    lowEnd.ramOverlayEnabled || lowEnd.magnifierEnabled
-                if (!cfg.systemFloatingEnabled && !anyExtraOverlay) {
-                    stopSelf()
-                } else {
-                    updateEdgeHandleSide(cfg.isRightEdge)
-                }
-            }
-        }
-        serviceScope.launch {
-            TriggerEventBus.crosshairConfig.collectLatest { cfg ->
-                updateFloatingCrosshair(cfg)
-            }
-        }
-        serviceScope.launch {
-            TriggerEventBus.lowEndConfig.collectLatest { cfg ->
-                updateVisionFilterOverlay(cfg.visionFilter)
-                updateHudPillOverlay(
-                    showFps = cfg.fpsOverlayEnabled,
-                    showTemp = cfg.tempOverlayEnabled,
-                    showRam = cfg.ramOverlayEnabled
-                )
-                updateMagnifierOverlay(
-                    enabled = cfg.magnifierEnabled,
-                    zoom = cfg.magnifierZoom
-                )
-                expandedPanelView?.invalidate()
-            }
-        }
-        serviceScope.launch {
-            TriggerEventBus.telemetry.collectLatest {
-                edgeHandleView?.invalidate()
-                hudPillView?.invalidate()
-                expandedPanelView?.invalidate()
-            }
-        }
-        serviceScope.launch {
-            TriggerEventBus.notificationShieldState.collectLatest {
-                expandedPanelView?.invalidate()
-            }
-        }
-        serviceScope.launch {
-            TriggerEventBus.clonedButtonsConfig.collectLatest { cfg ->
-                updateFloatingClonedButtonsOverlay(cfg)
-                expandedPanelView?.invalidate()
-            }
-        }
-        serviceScope.launch {
-            TriggerEventBus.shutdownAndExitRequests.collectLatest {
-                stopSelf()
-            }
-        }
+        attachSidebarOverlay()
+        observeCrosshairSync()
+        observeClonedButtonsSync()
+        observeCompleteShutdown()
+        TriggerEventBus.setOverlayRunning(true)
     }
 
-    private fun overlayWindowType(): Int {
+    override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        when (intent?.action) {
+            ACTION_STOP_OVERLAY -> {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            ACTION_SET_FPS_HUD -> {
+                val showHud = intent.getBooleanExtra(EXTRA_SHOW_FPS_HUD, false)
+                setFpsHudVisible(showHud)
+            }
+        }
+        return START_STICKY
+    }
+
+    override fun onDestroy() {
+        crosshairObserverJob?.cancel()
+        clonedObserverJob?.cancel()
+        shutdownObserverJob?.cancel()
+        telemetryEngine.stopFrameMonitor()
+        removeAllOverlays()
+        TriggerEventBus.setOverlayRunning(false)
+        serviceScope.cancel()
+        super.onDestroy()
+    }
+
+    private fun overlayLayoutType(): Int {
         return if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
         } else {
@@ -131,1197 +195,1091 @@ class FloatingGameSidebarService : Service() {
         }
     }
 
-    private fun setupEdgeHandleOverlay() {
-        val wm = windowManager ?: return
-        val density = resources.displayMetrics.density
-        val cfg = TriggerEventBus.edgeSidebarConfig.value
+    private fun observeCrosshairSync() {
+        crosshairObserverJob?.cancel()
+        crosshairObserverJob = serviceScope.launch {
+            TriggerEventBus.crosshairConfig.collect { config ->
+                if (!Settings.canDrawOverlays(this@FloatingGameSidebarService)) return@collect
+                if (config.enabled) {
+                    attachCrosshairOverlayIfNeeded()
+                    updateCrosshairPosition(config)
+                } else {
+                    removeCrosshairOverlay()
+                }
+            }
+        }
+    }
 
-        val handleW = (30 * density).toInt()
-        val handleH = (128 * density).toInt()
+    private fun observeClonedButtonsSync() {
+        clonedObserverJob?.cancel()
+        clonedObserverJob = serviceScope.launch {
+            TriggerEventBus.clonedButtonsConfig.collect { config ->
+                if (!Settings.canDrawOverlays(this@FloatingGameSidebarService)) return@collect
+                if (config.enabled) {
+                    syncClonedButtonsWindows(config.buttons, !config.editPositionsLocked)
+                } else {
+                    removeClonedButtonsOverlays()
+                }
+            }
+        }
+    }
+
+    private fun observeCompleteShutdown() {
+        shutdownObserverJob?.cancel()
+        shutdownObserverJob = serviceScope.launch {
+            TriggerEventBus.shutdownRequests.collect {
+                stopSelf()
+            }
+        }
+    }
+
+    private fun setFpsHudVisible(visible: Boolean) {
+        fpsHudEnabledState.value = visible
+        if (visible) {
+            attachFpsHudOverlayIfNeeded()
+        } else {
+            removeFpsHudOverlay()
+        }
+    }
+
+    private fun attachSidebarOverlay() {
+        if (sidebarComposeView != null) return
 
         val params = WindowManager.LayoutParams(
-            handleW,
-            handleH,
-            overlayWindowType(),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayLayoutType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.TOP or if (cfg.isRightEdge) Gravity.END else Gravity.START
+            gravity = Gravity.TOP or Gravity.START
             x = 0
-            y = (resources.displayMetrics.heightPixels * 0.32f).toInt()
+            y = 240
         }
-        handleLayoutParams = params
+        sidebarParams = params
 
-        val view = FloatingEdgeHandleView(
-            context = this,
-            onSwipeOrTapExpand = { showExpandedPanel() },
-            onDragVertical = { deltaY ->
-                val p = handleLayoutParams ?: return@FloatingEdgeHandleView
-                p.y = (p.y + deltaY.toInt()).coerceIn(80, resources.displayMetrics.heightPixels - 260)
-                try {
-                    wm.updateViewLayout(edgeHandleView, p)
-                } catch (_: Exception) {
-                }
+        val owner = OverlayComposeLifecycleOwner().apply { onCreate() }
+        sidebarOwner = owner
+
+        val composeView = ComposeView(this).apply {
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeViewModelStoreOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setContent {
+                FloatingSidebarOverlayRoot(
+                    telemetryEngine = telemetryEngine,
+                    boosterManager = boosterManager,
+                    fpsHudVisible = fpsHudEnabledState.value,
+                    onToggleFpsHud = { setFpsHudVisible(!fpsHudEnabledState.value) },
+                    onDragDelta = { dx, dy ->
+                        sidebarParams?.let { lp ->
+                            lp.x = (lp.x + dx.roundToInt()).coerceAtLeast(0)
+                            lp.y = (lp.y + dy.roundToInt()).coerceAtLeast(48)
+                            safeUpdateViewLayout(this, lp)
+                        }
+                    },
+                    onOpenMainApp = {
+                        val launchIntent = Intent(this@FloatingGameSidebarService, MainActivity::class.java).apply {
+                            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+                        }
+                        startActivity(launchIntent)
+                    },
+                    onStopGamingMode = {
+                        boosterManager.restoreAllSessionControls()
+                        TriggerEventBus.requestCompleteShutdown()
+                        stopSelf()
+                    }
+                )
             }
-        )
+        }
 
         try {
-            wm.addView(view, params)
-            edgeHandleView = view
+            windowManager.addView(composeView, params)
+            sidebarComposeView = composeView
         } catch (_: Exception) {
+            owner.onDestroy()
+            sidebarOwner = null
         }
     }
 
-    private fun updateEdgeHandleSide(isRightEdge: Boolean) {
-        val wm = windowManager ?: return
-        val p = handleLayoutParams ?: return
-        val v = edgeHandleView ?: return
-        p.gravity = Gravity.TOP or if (isRightEdge) Gravity.END else Gravity.START
-        try {
-            wm.updateViewLayout(v, p)
-            v.invalidate()
-        } catch (_: Exception) {
-        }
-    }
+    private fun attachFpsHudOverlayIfNeeded() {
+        if (fpsHudComposeView != null) return
 
-    private fun showExpandedPanel() {
-        if (isPanelExpanded) return
-        val wm = windowManager ?: return
-        val density = resources.displayMetrics.density
-        val cfg = TriggerEventBus.edgeSidebarConfig.value
-
-        val panelW = (308 * density).toInt()
-        val panelH = (486 * density).toInt()
-
+        val metrics = resources.displayMetrics
         val params = WindowManager.LayoutParams(
-            panelW,
-            panelH,
-            overlayWindowType(),
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.WRAP_CONTENT,
+            overlayLayoutType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
-            gravity = Gravity.CENTER_VERTICAL or if (cfg.isRightEdge) Gravity.END else Gravity.START
-            x = (10 * density).toInt()
-            y = 0
+            gravity = Gravity.TOP or Gravity.START
+            x = (metrics.widthPixels * 0.32f).roundToInt()
+            y = 32
+        }
+        fpsHudParams = params
+
+        val owner = OverlayComposeLifecycleOwner().apply { onCreate() }
+        fpsHudOwner = owner
+
+        val view = ComposeView(this).apply {
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeViewModelStoreOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setContent {
+                FloatingMiniFpsHudPill(
+                    telemetryEngine = telemetryEngine,
+                    onDragDelta = { dx, dy ->
+                        fpsHudParams?.let { lp ->
+                            lp.x = (lp.x + dx.roundToInt()).coerceIn(0, metrics.widthPixels - 140)
+                            lp.y = (lp.y + dy.roundToInt()).coerceIn(0, metrics.heightPixels - 80)
+                            safeUpdateViewLayout(this, lp)
+                        }
+                    },
+                    onClose = { setFpsHudVisible(false) }
+                )
+            }
         }
 
-        val panel = FloatingTurboPanelView(
-            context = this,
-            onClosePanel = { hideExpandedPanel() },
-            onOpenMainApp = {
-                hideExpandedPanel()
-                val intent = Intent(this, MainActivity::class.java).apply {
-                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_SINGLE_TOP)
-                }
-                startActivity(intent)
-            }
-        )
-
         try {
-            wm.addView(panel, params)
-            expandedPanelView = panel
-            isPanelExpanded = true
+            windowManager.addView(view, params)
+            fpsHudComposeView = view
         } catch (_: Exception) {
+            owner.onDestroy()
+            fpsHudOwner = null
         }
     }
 
-    private fun hideExpandedPanel() {
-        val wm = windowManager ?: return
-        expandedPanelView?.let {
+    private fun removeFpsHudOverlay() {
+        fpsHudComposeView?.let {
             try {
-                wm.removeView(it)
+                windowManager.removeView(it)
             } catch (_: Exception) {
             }
         }
-        expandedPanelView = null
-        isPanelExpanded = false
+        fpsHudComposeView = null
+        fpsHudParams = null
+        fpsHudOwner?.onDestroy()
+        fpsHudOwner = null
     }
 
-    private fun updateFloatingCrosshair(config: CrosshairConfig) {
-        val wm = windowManager ?: return
-        if (!config.systemOverlayEnabled) {
-            crosshairView?.let {
-                try {
-                    wm.removeView(it)
-                } catch (_: Exception) {
-                }
-            }
-            crosshairView = null
-            return
-        }
+    private fun attachCrosshairOverlayIfNeeded() {
+        if (crosshairComposeView != null) return
 
+        val config = TriggerEventBus.crosshairConfig.value
         val density = resources.displayMetrics.density
-        val boxPx = (110 * density).toInt()
+        val boxSizePx = (90 * density).roundToInt()
+
         val params = WindowManager.LayoutParams(
-            boxPx,
-            boxPx,
-            overlayWindowType(),
+            boxSizePx,
+            boxSizePx,
+            overlayLayoutType(),
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                 WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
                 WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.CENTER
-            x = (config.offsetX * density).toInt()
-            y = (config.offsetY * density).toInt()
+            x = (config.offsetXDp * density).roundToInt()
+            y = (config.offsetYDp * density).roundToInt()
+        }
+        crosshairParams = params
+
+        val owner = OverlayComposeLifecycleOwner().apply { onCreate() }
+        crosshairOwner = owner
+
+        val view = ComposeView(this).apply {
+            setViewTreeLifecycleOwner(owner)
+            setViewTreeViewModelStoreOwner(owner)
+            setViewTreeSavedStateRegistryOwner(owner)
+            setContent {
+                val liveConfig by TriggerEventBus.crosshairConfig.collectAsState()
+                if (liveConfig.enabled) {
+                    FloatingCrosshairOverlayCanvas(config = liveConfig)
+                }
+            }
         }
 
-        val existing = crosshairView
-        if (existing == null) {
-            val v = OverlayCrosshairView(this, config)
-            try {
-                wm.addView(v, params)
-                crosshairView = v
-            } catch (_: Exception) {
-            }
-        } else {
-            existing.updateConfig(config)
-            try {
-                wm.updateViewLayout(existing, params)
-            } catch (_: Exception) {
-            }
+        try {
+            windowManager.addView(view, params)
+            crosshairComposeView = view
+        } catch (_: Exception) {
+            owner.onDestroy()
+            crosshairOwner = null
         }
     }
 
-    private fun updateVisionFilterOverlay(filter: ScreenVisionFilter) {
-        val wm = windowManager ?: return
-        if (filter == ScreenVisionFilter.NONE) {
-            visionFilterView?.let {
-                try {
-                    wm.removeView(it)
-                } catch (_: Exception) {
-                }
-            }
-            visionFilterView = null
-            return
-        }
-
-        val params = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.MATCH_PARENT,
-            WindowManager.LayoutParams.MATCH_PARENT,
-            overlayWindowType(),
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
-                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        )
-
-        val existing = visionFilterView
-        if (existing == null) {
-            val v = View(this).apply {
-                setBackgroundColor(filter.androidTintHex)
-            }
-            try {
-                wm.addView(v, params)
-                visionFilterView = v
-            } catch (_: Exception) {
-            }
-        } else {
-            existing.setBackgroundColor(filter.androidTintHex)
-        }
-    }
-
-    private fun updateHudPillOverlay(showFps: Boolean, showTemp: Boolean, showRam: Boolean) {
-        val wm = windowManager ?: return
-        if (!showFps && !showTemp && !showRam) {
-            hudPillView?.let {
-                try {
-                    wm.removeView(it)
-                } catch (_: Exception) {
-                }
-            }
-            hudPillView = null
-            hudPillParams = null
-            return
-        }
-
+    private fun updateCrosshairPosition(config: CrosshairConfig) {
+        val view = crosshairComposeView ?: return
+        val params = crosshairParams ?: return
         val density = resources.displayMetrics.density
-        val activeCount = listOf(showFps, showTemp, showRam).count { it }.coerceAtLeast(1)
-        val pillW = ((82 * activeCount + 24) * density).toInt()
-        val pillH = (32 * density).toInt()
+        params.x = (config.offsetXDp * density).roundToInt()
+        params.y = (config.offsetYDp * density).roundToInt()
+        safeUpdateViewLayout(view, params)
+    }
 
-        val existing = hudPillView
-        if (existing == null) {
-            val params = WindowManager.LayoutParams(
-                pillW,
-                pillH,
-                overlayWindowType(),
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = (24 * density).toInt()
-                y = (44 * density).toInt()
+    private fun removeCrosshairOverlay() {
+        crosshairComposeView?.let {
+            try {
+                windowManager.removeView(it)
+            } catch (_: Exception) {
             }
-            hudPillParams = params
-            val v = FloatingHudPillOverlayView(
-                context = this,
-                showFps = showFps,
-                showTemp = showTemp,
-                showRam = showRam,
-                onDragDelta = { dx, dy ->
-                    val p = hudPillParams ?: return@FloatingHudPillOverlayView
-                    p.x = (p.x + dx.toInt()).coerceIn(0, (resources.displayMetrics.widthPixels - pillW).coerceAtLeast(0))
-                    p.y = (p.y + dy.toInt()).coerceIn(20, (resources.displayMetrics.heightPixels - pillH - 20).coerceAtLeast(20))
+        }
+        crosshairComposeView = null
+        crosshairParams = null
+        crosshairOwner?.onDestroy()
+        crosshairOwner = null
+    }
+
+    private fun syncClonedButtonsWindows(
+        buttons: List<ClonedTouchButton>,
+        showTargetPins: Boolean
+    ) {
+        val metrics = resources.displayMetrics
+        val screenW = metrics.widthPixels.coerceAtLeast(320)
+        val screenH = metrics.heightPixels.coerceAtLeast(480)
+        val density = metrics.density
+
+        val enabledIds = buttons.filter { it.enabled }.map { it.id }.toSet()
+
+        val toRemove = clonedOverlayHolders.keys.filter { it !in enabledIds }
+        for (id in toRemove) {
+            clonedOverlayHolders.remove(id)?.let { holder ->
+                try {
+                    windowManager.removeView(holder.sourceView)
+                } catch (_: Exception) {
+                }
+                holder.sourceOwner.onDestroy()
+                holder.targetView?.let { tv ->
                     try {
-                        wm.updateViewLayout(hudPillView, p)
+                        windowManager.removeView(tv)
                     } catch (_: Exception) {
                     }
                 }
-            )
-            try {
-                wm.addView(v, params)
-                hudPillView = v
-            } catch (_: Exception) {
-            }
-        } else {
-            existing.updateFlags(showFps, showTemp, showRam)
-            hudPillParams?.let { p ->
-                p.width = pillW
-                try {
-                    wm.updateViewLayout(existing, p)
-                } catch (_: Exception) {
-                }
+                holder.targetOwner?.onDestroy()
             }
         }
-    }
 
-    private fun updateMagnifierOverlay(enabled: Boolean, zoom: Float) {
-        val wm = windowManager ?: return
-        if (!enabled) {
-            magnifierView?.let {
-                try {
-                    wm.removeView(it)
-                } catch (_: Exception) {
-                }
-            }
-            magnifierView = null
-            magnifierParams = null
-            return
-        }
+        for (btn in buttons.filter { it.enabled }) {
+            val sizePx = (btn.buttonSizeDp * density).roundToInt().coerceIn(96, 260)
+            val existing = clonedOverlayHolders[btn.id]
 
-        val density = resources.displayMetrics.density
-        val sizePx = ((112f + (zoom - 1.5f) * 24f).coerceIn(104f, 168f) * density).toInt()
-        val existing = magnifierView
-        if (existing == null) {
-            val params = WindowManager.LayoutParams(
-                sizePx,
-                sizePx,
-                overlayWindowType(),
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.CENTER
-                x = 0
-                y = (-42 * density).toInt()
-            }
-            magnifierParams = params
-            val v = FloatingMagnifierOverlayView(
-                context = this,
-                zoom = zoom,
-                onDragDelta = { dx, dy ->
-                    val p = magnifierParams ?: return@FloatingMagnifierOverlayView
-                    p.x += dx.toInt()
-                    p.y += dy.toInt()
-                    try {
-                        wm.updateViewLayout(magnifierView, p)
-                    } catch (_: Exception) {
-                    }
-                }
-            )
-            try {
-                wm.addView(v, params)
-                magnifierView = v
-            } catch (_: Exception) {
-            }
-        } else {
-            existing.updateZoom(zoom)
-            magnifierParams?.let { p ->
-                p.width = sizePx
-                p.height = sizePx
-                try {
-                    wm.updateViewLayout(existing, p)
-                } catch (_: Exception) {
-                }
-            }
-        }
-    }
-
-    private fun updateFloatingClonedButtonsOverlay(config: ClonedButtonsConfig) {
-        val wm = windowManager ?: return
-        removeAllClonedViews(wm)
-
-        if (!config.masterEnabled || !config.systemOverlayEnabled) {
-            return
-        }
-
-        val density = resources.displayMetrics.density
-        val screenW = resources.displayMetrics.widthPixels.toFloat().coerceAtLeast(720f)
-        val screenH = resources.displayMetrics.heightPixels.toFloat().coerceAtLeast(1280f)
-        val btnPx = (config.buttonSizeDp.coerceIn(38f, 84f) * density).toInt()
-        val targetPx = (38f * density).toInt()
-
-        for (btn in config.buttons.filter { it.enabled }) {
-            // 1. Floating Cloned Action Button (where the user presses)
-            val btnParams = WindowManager.LayoutParams(
-                btnPx,
-                btnPx,
-                overlayWindowType(),
-                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
-                    WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-                PixelFormat.TRANSLUCENT
-            ).apply {
-                gravity = Gravity.TOP or Gravity.START
-                x = ((btn.buttonXRatio * screenW) - (btnPx / 2f)).toInt().coerceIn(0, (screenW - btnPx).toInt())
-                y = ((btn.buttonYRatio * screenH) - (btnPx / 2f)).toInt().coerceIn(0, (screenH - btnPx).toInt())
-            }
-
-            val actionView = FloatingClonedButtonOverlayView(
-                context = this,
-                button = btn,
-                isLockedForPlay = config.isLockedForPlay,
-                opacity = config.buttonOpacity,
-                onDragDelta = { dx, dy ->
-                    val newX = ((btnParams.x + dx + btnPx / 2f) / screenW).coerceIn(0.05f, 0.95f)
-                    val newY = ((btnParams.y + dy + btnPx / 2f) / screenH).coerceIn(0.08f, 0.92f)
-                    btnParams.x = ((newX * screenW) - btnPx / 2f).toInt()
-                    btnParams.y = ((newY * screenH) - btnPx / 2f).toInt()
-                    try {
-                        wm.updateViewLayout(clonedButtonViews[btn.id], btnParams)
-                    } catch (_: Exception) {
-                    }
-                    val curCfg = TriggerEventBus.clonedButtonsConfig.value
-                    TriggerEventBus.updateClonedButtonsConfig(
-                        curCfg.copy(
-                            buttons = curCfg.buttons.map {
-                                if (it.id == btn.id) it.copy(buttonXRatio = newX, buttonYRatio = newY) else it
-                            }
-                        )
-                    )
-                },
-                onTapDownUp = { isDown ->
-                    TriggerEventBus.emitClonedButtonTap(btn, isDown = isDown)
-                }
-            )
-            try {
-                wm.addView(actionView, btnParams)
-                clonedButtonViews[btn.id] = actionView
-            } catch (_: Exception) {
-            }
-
-            // 2. Original Target Marker (only shown when unlocked/editing positions)
-            if (!config.isLockedForPlay) {
-                val targetParams = WindowManager.LayoutParams(
-                    targetPx,
-                    targetPx,
-                    overlayWindowType(),
+            if (existing == null) {
+                val srcParams = WindowManager.LayoutParams(
+                    sizePx,
+                    sizePx,
+                    overlayLayoutType(),
                     WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
                         WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     gravity = Gravity.TOP or Gravity.START
-                    x = ((btn.targetXRatio * screenW) - (targetPx / 2f)).toInt().coerceIn(0, (screenW - targetPx).toInt())
-                    y = ((btn.targetYRatio * screenH) - (targetPx / 2f)).toInt().coerceIn(0, (screenH - targetPx).toInt())
+                    x = (btn.sourceX * screenW - sizePx / 2f).roundToInt().coerceIn(0, screenW - sizePx)
+                    y = (btn.sourceY * screenH - sizePx / 2f).roundToInt().coerceIn(0, screenH - sizePx)
                 }
 
-                val targetView = FloatingClonedTargetOverlayView(
-                    context = this,
-                    button = btn,
-                    onDragDelta = { dx, dy ->
-                        val newTX = ((targetParams.x + dx + targetPx / 2f) / screenW).coerceIn(0.05f, 0.95f)
-                        val newTY = ((targetParams.y + dy + targetPx / 2f) / screenH).coerceIn(0.08f, 0.92f)
-                        targetParams.x = ((newTX * screenW) - targetPx / 2f).toInt()
-                        targetParams.y = ((newTY * screenH) - targetPx / 2f).toInt()
-                        try {
-                            wm.updateViewLayout(clonedTargetViews[btn.id], targetParams)
-                        } catch (_: Exception) {
-                        }
-                        val curCfg = TriggerEventBus.clonedButtonsConfig.value
-                        TriggerEventBus.updateClonedButtonsConfig(
-                            curCfg.copy(
-                                buttons = curCfg.buttons.map {
-                                    if (it.id == btn.id) it.copy(targetXRatio = newTX, targetYRatio = newTY) else it
+                val srcOwner = OverlayComposeLifecycleOwner().apply { onCreate() }
+                val srcView = ComposeView(this).apply {
+                    setViewTreeLifecycleOwner(srcOwner)
+                    setViewTreeViewModelStoreOwner(srcOwner)
+                    setViewTreeSavedStateRegistryOwner(srcOwner)
+                    setContent {
+                        val liveConfig by TriggerEventBus.clonedButtonsConfig.collectAsState()
+                        val liveBtn = liveConfig.buttons.firstOrNull { it.id == btn.id } ?: btn
+                        FloatingClonedSourceNode(
+                            button = liveBtn,
+                            editLocked = liveConfig.editPositionsLocked,
+                            onDragDelta = { dx, dy ->
+                                val newX = (srcParams.x + dx.roundToInt()).coerceIn(0, screenW - sizePx)
+                                val newY = (srcParams.y + dy.roundToInt()).coerceIn(0, screenH - sizePx)
+                                srcParams.x = newX
+                                srcParams.y = newY
+                                safeUpdateViewLayout(this, srcParams)
+
+                                val normX = ((newX + sizePx / 2f) / screenW).coerceIn(0.04f, 0.96f)
+                                val normY = ((newY + sizePx / 2f) / screenH).coerceIn(0.06f, 0.94f)
+                                val updatedList = TriggerEventBus.clonedButtonsConfig.value.buttons.map {
+                                    if (it.id == btn.id) it.copy(sourceX = normX, sourceY = normY) else it
                                 }
-                            )
+                                TriggerEventBus.updateClonedButtonsConfig(
+                                    TriggerEventBus.clonedButtonsConfig.value.copy(buttons = updatedList)
+                                )
+                            }
                         )
                     }
-                )
+                }
+
                 try {
-                    wm.addView(targetView, targetParams)
-                    clonedTargetViews[btn.id] = targetView
+                    windowManager.addView(srcView, srcParams)
+                    val holder = ClonedOverlayHolder(
+                        buttonId = btn.id,
+                        sourceView = srcView,
+                        sourceParams = srcParams,
+                        sourceOwner = srcOwner
+                    )
+                    clonedOverlayHolders[btn.id] = holder
+                } catch (_: Exception) {
+                    srcOwner.onDestroy()
+                }
+            } else {
+                existing.sourceParams.width = sizePx
+                existing.sourceParams.height = sizePx
+                existing.sourceParams.x =
+                    (btn.sourceX * screenW - sizePx / 2f).roundToInt().coerceIn(0, screenW - sizePx)
+                existing.sourceParams.y =
+                    (btn.sourceY * screenH - sizePx / 2f).roundToInt().coerceIn(0, screenH - sizePx)
+                safeUpdateViewLayout(existing.sourceView, existing.sourceParams)
+            }
+
+            val holder = clonedOverlayHolders[btn.id] ?: continue
+            val targetPinPx = (44 * density).roundToInt()
+            if (showTargetPins) {
+                if (holder.targetView == null) {
+                    val tgtParams = WindowManager.LayoutParams(
+                        targetPinPx,
+                        targetPinPx,
+                        overlayLayoutType(),
+                        WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                            WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                        PixelFormat.TRANSLUCENT
+                    ).apply {
+                        gravity = Gravity.TOP or Gravity.START
+                        x = (btn.targetX * screenW - targetPinPx / 2f).roundToInt()
+                            .coerceIn(0, screenW - targetPinPx)
+                        y = (btn.targetY * screenH - targetPinPx / 2f).roundToInt()
+                            .coerceIn(0, screenH - targetPinPx)
+                    }
+                    val tgtOwner = OverlayComposeLifecycleOwner().apply { onCreate() }
+                    val tgtView = ComposeView(this).apply {
+                        setViewTreeLifecycleOwner(tgtOwner)
+                        setViewTreeViewModelStoreOwner(tgtOwner)
+                        setViewTreeSavedStateRegistryOwner(tgtOwner)
+                        setContent {
+                            val liveConfig by TriggerEventBus.clonedButtonsConfig.collectAsState()
+                            val liveBtn = liveConfig.buttons.firstOrNull { it.id == btn.id } ?: btn
+                            FloatingClonedTargetPin(
+                                button = liveBtn,
+                                onDragDelta = { dx, dy ->
+                                    val newX = (tgtParams.x + dx.roundToInt()).coerceIn(0, screenW - targetPinPx)
+                                    val newY = (tgtParams.y + dy.roundToInt()).coerceIn(0, screenH - targetPinPx)
+                                    tgtParams.x = newX
+                                    tgtParams.y = newY
+                                    safeUpdateViewLayout(this, tgtParams)
+
+                                    val normX = ((newX + targetPinPx / 2f) / screenW).coerceIn(0.04f, 0.96f)
+                                    val normY = ((newY + targetPinPx / 2f) / screenH).coerceIn(0.06f, 0.94f)
+                                    val updatedList = TriggerEventBus.clonedButtonsConfig.value.buttons.map {
+                                        if (it.id == btn.id) it.copy(targetX = normX, targetY = normY) else it
+                                    }
+                                    TriggerEventBus.updateClonedButtonsConfig(
+                                        TriggerEventBus.clonedButtonsConfig.value.copy(buttons = updatedList)
+                                    )
+                                }
+                            )
+                        }
+                    }
+                    try {
+                        windowManager.addView(tgtView, tgtParams)
+                        holder.targetView = tgtView
+                        holder.targetParams = tgtParams
+                        holder.targetOwner = tgtOwner
+                    } catch (_: Exception) {
+                        tgtOwner.onDestroy()
+                    }
+                } else {
+                    holder.targetParams?.let { tp ->
+                        tp.x = (btn.targetX * screenW - targetPinPx / 2f).roundToInt()
+                            .coerceIn(0, screenW - targetPinPx)
+                        tp.y = (btn.targetY * screenH - targetPinPx / 2f).roundToInt()
+                            .coerceIn(0, screenH - targetPinPx)
+                        holder.targetView?.let { tv -> safeUpdateViewLayout(tv, tp) }
+                    }
+                }
+            } else {
+                holder.targetView?.let { tv ->
+                    try {
+                        windowManager.removeView(tv)
+                    } catch (_: Exception) {
+                    }
+                }
+                holder.targetOwner?.onDestroy()
+                holder.targetView = null
+                holder.targetParams = null
+                holder.targetOwner = null
+            }
+        }
+    }
+
+    private fun removeClonedButtonsOverlays() {
+        for (holder in clonedOverlayHolders.values) {
+            try {
+                windowManager.removeView(holder.sourceView)
+            } catch (_: Exception) {
+            }
+            holder.sourceOwner.onDestroy()
+            holder.targetView?.let { tv ->
+                try {
+                    windowManager.removeView(tv)
                 } catch (_: Exception) {
                 }
             }
+            holder.targetOwner?.onDestroy()
+        }
+        clonedOverlayHolders.clear()
+    }
+
+    private fun safeUpdateViewLayout(view: ComposeView, params: WindowManager.LayoutParams) {
+        try {
+            windowManager.updateViewLayout(view, params)
+        } catch (_: Exception) {
         }
     }
 
-    private fun removeAllClonedViews(wm: WindowManager?) {
-        clonedButtonViews.values.forEach { v ->
+    private fun removeAllOverlays() {
+        sidebarComposeView?.let {
             try {
-                wm?.removeView(v)
+                windowManager.removeView(it)
             } catch (_: Exception) {
             }
         }
-        clonedButtonViews.clear()
-        clonedTargetViews.values.forEach { v ->
-            try {
-                wm?.removeView(v)
-            } catch (_: Exception) {
-            }
-        }
-        clonedTargetViews.clear()
+        sidebarComposeView = null
+        sidebarParams = null
+        sidebarOwner?.onDestroy()
+        sidebarOwner = null
+
+        removeCrosshairOverlay()
+        removeFpsHudOverlay()
+        removeClonedButtonsOverlays()
     }
 
-    override fun onDestroy() {
-        TriggerEventBus.setOverlayServiceRunning(false)
-        val wm = windowManager
-        removeAllClonedViews(wm)
-        listOfNotNull(
-            edgeHandleView,
-            expandedPanelView,
-            crosshairView,
-            visionFilterView,
-            hudPillView,
-            magnifierView
-        ).forEach { v ->
-            try {
-                wm?.removeView(v)
-            } catch (_: Exception) {
-            }
-        }
-        serviceScope.cancel()
-        super.onDestroy()
+    companion object {
+        const val ACTION_STOP_OVERLAY = "com.example.action.STOP_OVERLAY"
+        const val ACTION_SET_FPS_HUD = "com.example.action.SET_FPS_HUD"
+        const val EXTRA_SHOW_FPS_HUD = "extra_show_fps_hud"
     }
 }
 
-/**
- * Sleek glowing neon edge handle that detects swipe-inward or tap to open the Game Turbo panel.
- */
-private class FloatingEdgeHandleView(
-    context: Context,
-    private val onSwipeOrTapExpand: () -> Unit,
-    private val onDragVertical: (Float) -> Unit
-) : View(context) {
+@Composable
+private fun FloatingSidebarOverlayRoot(
+    telemetryEngine: HardwareTelemetryEngine,
+    boosterManager: SystemBoosterManager,
+    fpsHudVisible: Boolean,
+    onToggleFpsHud: () -> Unit,
+    onDragDelta: (Float, Float) -> Unit,
+    onOpenMainApp: () -> Unit,
+    onStopGamingMode: () -> Unit
+) {
+    var expanded by remember { mutableStateOf(false) }
+    var telemetry by remember { mutableStateOf(HardwareTelemetry()) }
+    var quickBoostBanner by remember { mutableStateOf<String?>(null) }
+    var boostTick by remember { mutableIntStateOf(0) }
 
-    private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xE60E1017.toInt()
-        style = Paint.Style.FILL
-    }
-    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFF1E38.toInt()
-        style = Paint.Style.STROKE
-        strokeWidth = 4f
-    }
-    private val cyanPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF00F0FF.toInt()
-        style = Paint.Style.FILL
-    }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textSize = 24f
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
-    }
+    val activeMode by TriggerEventBus.activePerformanceMode.collectAsState()
+    val crosshairConfig by TriggerEventBus.crosshairConfig.collectAsState()
+    val clonedConfig by TriggerEventBus.clonedButtonsConfig.collectAsState()
+    val activeGameTitle by TriggerEventBus.activeGameTitle.collectAsState()
 
-    private var downX = 0f
-    private var downY = 0f
-    private var lastY = 0f
-    private var movedVertically = false
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val rect = RectF(4f, 4f, width - 4f, height - 4f)
-        canvas.drawRoundRect(rect, 22f, 22f, bgPaint)
-        canvas.drawRoundRect(rect, 22f, 22f, strokePaint)
-
-        // Glowing bar indicator
-        val barRect = RectF(width * 0.38f, height * 0.2f, width * 0.62f, height * 0.52f)
-        canvas.drawRoundRect(barRect, 6f, 6f, cyanPaint)
-
-        // Live FPS readout on handle
-        val fps = TriggerEventBus.telemetry.value.liveFps
-        textPaint.textSize = width * 0.38f
-        canvas.drawText("$fps", width / 2f, height * 0.74f, textPaint)
-        textPaint.textSize = width * 0.26f
-        textPaint.color = 0xFF00E676.toInt()
-        canvas.drawText("FPS", width / 2f, height * 0.88f, textPaint)
-        textPaint.color = Color.WHITE
+    // Lightweight telemetry loop — only runs when panel is expanded
+    LaunchedEffect(expanded, activeMode) {
+        while (isActive && expanded) {
+            telemetryEngine.triggerLightweightFrameSample()
+            telemetry = telemetryEngine.sampleTelemetry(activeMode, measureNetworkPing = false)
+            delay(4000L)
+        }
     }
 
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                downX = event.rawX
-                downY = event.rawY
-                lastY = event.rawY
-                movedVertically = false
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = abs(event.rawX - downX)
-                val dy = event.rawY - lastY
-                if (dx > 28f && !movedVertically) {
-                    onSwipeOrTapExpand()
-                    return true
+    LaunchedEffect(boostTick) {
+        if (boostTick > 0) {
+            val cleanedMb = boosterManager.purgeOwnCacheDirectory()
+            telemetryEngine.notifyCacheCleaned(cleanedMb)
+            quickBoostBanner = "تم تسريع الرام وتنظيف ${cleanedMb}MB كاش!"
+            delay(2500L)
+            quickBoostBanner = null
+        }
+    }
+
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        // Sleek edge handle
+        Box(
+            modifier = Modifier
+                .width(if (expanded) 12.dp else 18.dp)
+                .height(92.dp)
+                .clip(RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp))
+                .background(
+                    Brush.verticalGradient(
+                        listOf(
+                            activeMode.primaryColor,
+                            Color(0xFF99001B)
+                        )
+                    )
+                )
+                .border(
+                    width = 1.dp,
+                    color = Color.White.copy(alpha = 0.45f),
+                    shape = RoundedCornerShape(topEnd = 12.dp, bottomEnd = 12.dp)
+                )
+                .pointerInput(Unit) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        onDragDelta(dragAmount.x, dragAmount.y)
+                    }
                 }
-                if (abs(event.rawY - downY) > 18f) {
-                    movedVertically = true
-                    onDragVertical(dy)
-                    lastY = event.rawY
-                }
-                return true
-            }
-            MotionEvent.ACTION_UP -> {
-                if (!movedVertically) {
-                    onSwipeOrTapExpand()
-                }
-                return true
+                .clickable { expanded = !expanded },
+            contentAlignment = Alignment.Center
+        ) {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(4.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                )
+                Box(
+                    modifier = Modifier
+                        .width(3.dp)
+                        .height(22.dp)
+                        .clip(RoundedCornerShape(2.dp))
+                        .background(Color.White.copy(alpha = 0.85f))
+                )
+                Box(
+                    modifier = Modifier
+                        .size(4.dp)
+                        .clip(CircleShape)
+                        .background(Color.White)
+                )
             }
         }
-        return super.onTouchEvent(event)
+
+        AnimatedVisibility(visible = expanded) {
+            Surface(
+                modifier = Modifier
+                    .padding(start = 6.dp)
+                    .width(268.dp),
+                shape = CutCornerShape(topStart = 12.dp, bottomEnd = 12.dp),
+                color = Color(0xF20D0D14),
+                border = androidx.compose.foundation.BorderStroke(1.2.dp, activeMode.primaryColor)
+            ) {
+                Column(modifier = Modifier.padding(12.dp)) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.SportsEsports,
+                                contentDescription = null,
+                                tint = activeMode.primaryColor,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Column {
+                                Text(
+                                    text = "GAMING MODE HUD",
+                                    color = Color.White,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Black,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                                Text(
+                                    text = activeGameTitle ?: "Hassan Games Center",
+                                    color = activeMode.primaryColor,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            IconButton(
+                                onClick = onOpenMainApp,
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.OpenInNew,
+                                    contentDescription = "فتح التطبيق",
+                                    tint = Color(0xFF00E5FF),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                            IconButton(
+                                onClick = { expanded = false },
+                                modifier = Modifier.size(26.dp)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "طي الشريط",
+                                    tint = Color.White.copy(alpha = 0.7f),
+                                    modifier = Modifier.size(15.dp)
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Live telemetry strip
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF151722))
+                            .padding(horizontal = 8.dp, vertical = 6.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        MiniOverlayStat("FPS", "${telemetry.liveFps}", Color(0xFF00E676))
+                        MiniOverlayStat("RAM", "${telemetry.ramUsagePercent}%", Color(0xFF00E5FF))
+                        MiniOverlayStat("TEMP", "${telemetry.batteryTempCelsius}°C", Color(0xFFFF9100))
+                        MiniOverlayStat("PING", "${telemetry.pingMs}ms", Color(0xFFFFEA00))
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Performance Mode Selector
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(5.dp)
+                    ) {
+                        PerformanceMode.entries.forEach { mode ->
+                            val selected = activeMode == mode
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .clip(RoundedCornerShape(6.dp))
+                                    .background(
+                                        if (selected) mode.primaryColor.copy(alpha = 0.25f)
+                                        else Color(0xFF1A1C26)
+                                    )
+                                    .border(
+                                        1.dp,
+                                        if (selected) mode.primaryColor else Color.White.copy(alpha = 0.12f),
+                                        RoundedCornerShape(6.dp)
+                                    )
+                                    .clickable { TriggerEventBus.updatePerformanceMode(mode) }
+                                    .padding(vertical = 5.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = when (mode) {
+                                        PerformanceMode.BALANCED -> "ECO"
+                                        PerformanceMode.PERFORMANCE -> "BOOST"
+                                        PerformanceMode.DIABLO -> "DIABLO"
+                                    },
+                                    color = if (selected) mode.primaryColor else Color.White.copy(alpha = 0.7f),
+                                    fontSize = 9.sp,
+                                    fontWeight = FontWeight.Black,
+                                    fontFamily = FontFamily.Monospace
+                                )
+                            }
+                        }
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Quick Tool Toggles
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        SidebarQuickToggleChip(
+                            title = "التصويب",
+                            active = crosshairConfig.enabled,
+                            accent = Color(0xFFFF1744),
+                            icon = Icons.Default.GpsFixed,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                TriggerEventBus.updateCrosshairConfig(
+                                    crosshairConfig.copy(enabled = !crosshairConfig.enabled)
+                                )
+                            }
+                        )
+                        SidebarQuickToggleChip(
+                            title = "عداد FPS",
+                            active = fpsHudVisible,
+                            accent = Color(0xFF00E676),
+                            icon = Icons.Default.Speed,
+                            modifier = Modifier.weight(1f),
+                            onClick = onToggleFpsHud
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        SidebarQuickToggleChip(
+                            title = "أزرار لمس C1-C4",
+                            active = clonedConfig.enabled,
+                            accent = Color(0xFF00E5FF),
+                            icon = Icons.Default.ControlCamera,
+                            modifier = Modifier.weight(1f),
+                            onClick = {
+                                TriggerEventBus.updateClonedButtonsConfig(
+                                    clonedConfig.copy(enabled = !clonedConfig.enabled)
+                                )
+                            }
+                        )
+                        SidebarQuickToggleChip(
+                            title = "تنظيف الرام",
+                            active = quickBoostBanner != null,
+                            accent = Color(0xFFFF9100),
+                            icon = Icons.Default.Memory,
+                            modifier = Modifier.weight(1f),
+                            onClick = { boostTick += 1 }
+                        )
+                    }
+
+                    quickBoostBanner?.let { msg ->
+                        Spacer(modifier = Modifier.height(6.dp))
+                        Text(
+                            text = msg,
+                            color = Color(0xFF00E676),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(8.dp))
+
+                    // Stop Gaming Mode button
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(Color(0xFF2B1118))
+                            .border(1.dp, Color(0xFFFF1744).copy(alpha = 0.6f), RoundedCornerShape(8.dp))
+                            .clickable { onStopGamingMode() }
+                            .padding(vertical = 7.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.PowerSettingsNew,
+                                contentDescription = null,
+                                tint = Color(0xFFFF1744),
+                                modifier = Modifier.size(14.dp)
+                            )
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = "إيقاف Gaming Mode وإغلاق الأدوات",
+                                color = Color(0xFFFF5252),
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 
-/**
- * Interactive Floating Game Turbo Panel drawn over external games.
- */
-private class FloatingTurboPanelView(
-    context: Context,
-    private val onClosePanel: () -> Unit,
-    private val onOpenMainApp: () -> Unit
-) : View(context) {
-
-    private val cardPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xF210131C.toInt()
-        style = Paint.Style.FILL
-    }
-    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFFF1E38.toInt()
-        style = Paint.Style.STROKE
-        strokeWidth = 4f
-    }
-    private val btnPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-    private val titlePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        isFakeBoldText = true
-        textAlign = Paint.Align.CENTER
-    }
-    private val subPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFFB0B8C8.toInt()
-        textAlign = Paint.Align.CENTER
-    }
-
-    private val boostRect = RectF()
-    private val coolRect = RectF()
-    private val shieldRect = RectF()
-    private val reconnectRect = RectF()
-    private val modeRect = RectF()
-    private val triggersRect = RectF()
-    private val clonedBtnRect = RectF()
-    private val clonedLockRect = RectF()
-    private val crosshairRect = RectF()
-    private val visionRect = RectF()
-    private val closeRect = RectF()
-    private val openAppRect = RectF()
-    private val shutdownRect = RectF()
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val density = resources.displayMetrics.density
-        val pad = 12f * density
-        val outer = RectF(4f, 4f, width - 4f, height - 4f)
-        canvas.drawRoundRect(outer, 18f * density, 18f * density, cardPaint)
-        canvas.drawRoundRect(outer, 18f * density, 18f * density, borderPaint)
-
-        val tel = TriggerEventBus.telemetry.value
-        val mode = TriggerEventBus.performanceMode.value
-        val trig = TriggerEventBus.triggerConfig.value
-        val cloned = TriggerEventBus.clonedButtonsConfig.value
-        val cross = TriggerEventBus.crosshairConfig.value
-        val lowEnd = TriggerEventBus.lowEndConfig.value
-        val shield = TriggerEventBus.notificationShieldState.value
-
-        titlePaint.textSize = 15f * density
-        canvas.drawText("⚡ HASSAN GAMES TURBO", width / 2f, 28f * density, titlePaint)
-
-        subPaint.textSize = 11f * density
-        subPaint.color = 0xFF00F0FF.toInt()
-        canvas.drawText(
-            "FPS: ${tel.liveFps}  |  RAM: ${tel.ramUsagePercent}%  |  ${tel.batteryTempCelsius}°C  |  ${tel.pingMs}ms",
-            width / 2f,
-            48f * density,
-            subPaint
+@Composable
+private fun MiniOverlayStat(label: String, value: String, color: Color) {
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Text(
+            text = value,
+            color = color,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            fontFamily = FontFamily.Monospace
         )
-
-        val rowH = 37f * density
-        val gap = 6.5f * density
-        var topY = 58f * density
-
-        // 1. Instant Super Boost & ICE Cooler Row
-        val halfRowW = (width - pad * 3) / 2f
-        boostRect.set(pad, topY, pad + halfRowW, topY + rowH)
-        coolRect.set(pad * 2 + halfRowW, topY, width - pad, topY + rowH)
-        drawActionButton(canvas, boostRect, 0xFFFF1E38.toInt(), "🚀 تسريع الرام", density)
-        drawActionButton(canvas, coolRect, 0xFF006D7A.toInt(), "❄️ استقرار حراري", density)
-        topY += rowH + gap
-
-        // 1b. Notification Shield & Quick Reconnect Row
-        shieldRect.set(pad, topY, pad + halfRowW, topY + rowH)
-        reconnectRect.set(pad * 2 + halfRowW, topY, width - pad, topY + rowH)
-        val shieldBg = if (shield.enabled || lowEnd.notificationShieldEnabled) 0xFF00693C.toInt() else 0xFF1C2234.toInt()
-        val shieldTxt = if (shield.enabled || lowEnd.notificationShieldEnabled) "🛡️ درع الإشعارات: ON" else "🛡️ درع الإشعارات: OFF"
-        val hudAny = lowEnd.fpsOverlayEnabled || lowEnd.tempOverlayEnabled || lowEnd.ramOverlayEnabled
-        val hudBg = if (hudAny) 0xFF007B8A.toInt() else 0xFF1C2234.toInt()
-        val hudTxt = if (hudAny) "📊 عداد الشاشة: ON" else "📊 عداد الشاشة: OFF"
-        drawActionButton(canvas, shieldRect, shieldBg, shieldTxt, density)
-        drawActionButton(canvas, reconnectRect, hudBg, hudTxt, density)
-        topY += rowH + gap
-
-        // 2. Cloned Touch Buttons Row (Show/Hide + Lock/Unlock positions)
-        clonedBtnRect.set(pad, topY, pad + halfRowW, topY + rowH)
-        clonedLockRect.set(pad * 2 + halfRowW, topY, width - pad, topY + rowH)
-        val cloneBg = if (cloned.systemOverlayEnabled) 0xFF007B8A.toInt() else 0xFF1C2234.toInt()
-        val cloneText = if (cloned.systemOverlayEnabled) "🔘 أزرار منسوخة: ON" else "🔘 أزرار منسوخة: OFF"
-        val lockBg = if (cloned.isLockedForPlay) 0xFF00693C.toInt() else 0xFF8A5A00.toInt()
-        val lockText = if (cloned.isLockedForPlay) "🔒 مقفول للعب" else "🔓 تحريك المواقع"
-        drawActionButton(canvas, clonedBtnRect, cloneBg, cloneText, density)
-        drawActionButton(canvas, clonedLockRect, lockBg, lockText, density)
-        topY += rowH + gap
-
-        // 3. Performance Mode Cycle
-        modeRect.set(pad, topY, width - pad, topY + rowH)
-        drawActionButton(canvas, modeRect, 0xFF1C2234.toInt(), "🔥 وضع القوة: ${mode.arabicTitle}", density)
-        topY += rowH + gap
-
-        // 4. Volume L1/R1 Toggle
-        triggersRect.set(pad, topY, width - pad, topY + rowH)
-        val trigColor = if (trig.enabled) 0xFF007B8A.toInt() else 0xFF1C2234.toInt()
-        val trigState = if (trig.enabled) "مفعّل ON" else "متوقف OFF"
-        drawActionButton(canvas, triggersRect, trigColor, "🎮 أزرار الصوت L1/R1: $trigState", density)
-        topY += rowH + gap
-
-        // 5. Floating Crosshair Toggle
-        crosshairRect.set(pad, topY, width - pad, topY + rowH)
-        val crossColor = if (cross.systemOverlayEnabled) 0xFF990A1C.toInt() else 0xFF1C2234.toInt()
-        val crossState = if (cross.systemOverlayEnabled) "مفعّل ON" else "متوقف OFF"
-        drawActionButton(canvas, crosshairRect, crossColor, "🎯 مؤشر التصويب العائم: $crossState", density)
-        topY += rowH + gap
-
-        // 6. Night Hunter Vision Filter Cycle
-        visionRect.set(pad, topY, width - pad, topY + rowH)
-        val visColor = if (lowEnd.visionFilter != ScreenVisionFilter.NONE) 0xFF00693C.toInt() else 0xFF1C2234.toInt()
-        drawActionButton(canvas, visionRect, visColor, "👁️ الرؤية: ${lowEnd.visionFilter.arabicName}", density)
-        topY += rowH + gap + (4f * density)
-
-        // Bottom Row: Open Full App, Hide Panel, & Complete Shutdown
-        val thirdW = (width - pad * 4) / 3f
-        openAppRect.set(pad, topY, pad + thirdW, topY + rowH * 0.9f)
-        closeRect.set(pad * 2 + thirdW, topY, pad * 2 + thirdW * 2, topY + rowH * 0.9f)
-        shutdownRect.set(pad * 3 + thirdW * 2, topY, width - pad, topY + rowH * 0.9f)
-
-        drawActionButton(canvas, openAppRect, 0xFF283048.toInt(), "فتح التطبيق", density)
-        drawActionButton(canvas, closeRect, 0xFF381824.toInt(), "إخفاء ✕", density)
-        drawActionButton(canvas, shutdownRect, 0xFFB71C1C.toInt(), "⏹️ إنهاء الكل", density)
-    }
-
-    private fun drawActionButton(canvas: Canvas, rect: RectF, bgColor: Int, text: String, density: Float) {
-        btnPaint.color = bgColor
-        canvas.drawRoundRect(rect, 10f * density, 10f * density, btnPaint)
-        titlePaint.textSize = 11.2f * density
-        val textY = rect.centerY() - ((titlePaint.descent() + titlePaint.ascent()) / 2f)
-        canvas.drawText(text, rect.centerX(), textY, titlePaint)
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (event.actionMasked == MotionEvent.ACTION_UP) {
-            val x = event.x
-            val y = event.y
-            when {
-                boostRect.contains(x, y) -> {
-                    TriggerEventBus.requestQuickBoostFromOverlay()
-                    invalidate()
-                }
-                coolRect.contains(x, y) -> {
-                    TriggerEventBus.requestCoolDownFromOverlay()
-                    invalidate()
-                }
-                shieldRect.contains(x, y) -> {
-                    TriggerEventBus.requestToggleNotificationShieldFromOverlay()
-                    invalidate()
-                }
-                reconnectRect.contains(x, y) -> {
-                    val cur = TriggerEventBus.lowEndConfig.value
-                    val anyActive = cur.fpsOverlayEnabled || cur.tempOverlayEnabled || cur.ramOverlayEnabled
-                    val nextState = !anyActive
-                    TriggerEventBus.updateLowEndConfig(
-                        cur.copy(
-                            fpsOverlayEnabled = nextState,
-                            tempOverlayEnabled = nextState,
-                            ramOverlayEnabled = nextState
-                        )
-                    )
-                    invalidate()
-                }
-                clonedBtnRect.contains(x, y) -> {
-                    val cur = TriggerEventBus.clonedButtonsConfig.value
-                    TriggerEventBus.updateClonedButtonsConfig(
-                        cur.copy(
-                            masterEnabled = true,
-                            systemOverlayEnabled = !cur.systemOverlayEnabled
-                        )
-                    )
-                    invalidate()
-                }
-                clonedLockRect.contains(x, y) -> {
-                    val cur = TriggerEventBus.clonedButtonsConfig.value
-                    TriggerEventBus.updateClonedButtonsConfig(
-                        cur.copy(
-                            masterEnabled = true,
-                            systemOverlayEnabled = true,
-                            isLockedForPlay = !cur.isLockedForPlay
-                        )
-                    )
-                    invalidate()
-                }
-                modeRect.contains(x, y) -> {
-                    val entries = PerformanceMode.entries
-                    val next = entries[(TriggerEventBus.performanceMode.value.ordinal + 1) % entries.size]
-                    TriggerEventBus.updatePerformanceMode(next)
-                    invalidate()
-                }
-                triggersRect.contains(x, y) -> {
-                    val cur = TriggerEventBus.triggerConfig.value
-                    TriggerEventBus.updateTriggerConfig(cur.copy(enabled = !cur.enabled))
-                    invalidate()
-                }
-                crosshairRect.contains(x, y) -> {
-                    val cur = TriggerEventBus.crosshairConfig.value
-                    TriggerEventBus.updateCrosshairConfig(
-                        cur.copy(
-                            systemOverlayEnabled = !cur.systemOverlayEnabled,
-                            enabledInApp = true
-                        )
-                    )
-                    invalidate()
-                }
-                visionRect.contains(x, y) -> {
-                    val entries = ScreenVisionFilter.entries
-                    val cur = TriggerEventBus.lowEndConfig.value
-                    val next = entries[(cur.visionFilter.ordinal + 1) % entries.size]
-                    TriggerEventBus.updateLowEndConfig(cur.copy(visionFilter = next))
-                    invalidate()
-                }
-                openAppRect.contains(x, y) -> {
-                    onOpenMainApp()
-                }
-                closeRect.contains(x, y) -> {
-                    onClosePanel()
-                }
-                shutdownRect.contains(x, y) -> {
-                    onClosePanel()
-                    TriggerEventBus.requestCompleteShutdown()
-                }
-            }
-            return true
-        }
-        return true
+        Text(
+            text = label,
+            color = Color.White.copy(alpha = 0.6f),
+            fontSize = 8.sp,
+            fontFamily = FontFamily.Monospace
+        )
     }
 }
 
-/**
- * Ultra-lightweight floating HUD pill showing live FPS, Battery Temp, and RAM % on top of games.
- * Redraws ONLY when telemetry snapshots arrive (every 5-15s), consuming 0% continuous CPU.
- */
-private class FloatingHudPillOverlayView(
-    context: Context,
-    private var showFps: Boolean,
-    private var showTemp: Boolean,
-    private var showRam: Boolean,
-    private val onDragDelta: (Float, Float) -> Unit
-) : View(context) {
-
-    private var lastRawX = 0f
-    private var lastRawY = 0f
-
-    private val bgPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xD90B0E17.toInt()
-        style = Paint.Style.FILL
-    }
-    private val borderPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF00F0FF.toInt()
-        style = Paint.Style.STROKE
-        strokeWidth = 3f
-    }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
-    }
-
-    fun updateFlags(fps: Boolean, temp: Boolean, ram: Boolean) {
-        showFps = fps
-        showTemp = temp
-        showRam = ram
-        invalidate()
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val density = resources.displayMetrics.density
-        val rect = RectF(3f, 3f, width - 3f, height - 3f)
-        canvas.drawRoundRect(rect, 16f * density, 16f * density, bgPaint)
-        canvas.drawRoundRect(rect, 16f * density, 16f * density, borderPaint)
-
-        val tel = TriggerEventBus.telemetry.value
-        val parts = mutableListOf<String>()
-        if (showFps) parts.add("${tel.liveFps} FPS")
-        if (showTemp) parts.add("${tel.batteryTempCelsius}°C")
-        if (showRam) parts.add("RAM ${tel.ramUsagePercent}%")
-
-        textPaint.textSize = 11f * density
-        val text = parts.joinToString("  •  ").ifBlank { "${tel.liveFps} FPS" }
-        val textY = rect.centerY() - ((textPaint.descent() + textPaint.ascent()) / 2f)
-        canvas.drawText(text, rect.centerX(), textY, textPaint)
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                lastRawX = event.rawX
-                lastRawY = event.rawY
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = event.rawX - lastRawX
-                val dy = event.rawY - lastRawY
-                lastRawX = event.rawX
-                lastRawY = event.rawY
-                onDragDelta(dx, dy)
-                return true
-            }
-        }
-        return true
+@Composable
+private fun SidebarQuickToggleChip(
+    title: String,
+    active: Boolean,
+    accent: Color,
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    modifier: Modifier = Modifier,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(8.dp))
+            .background(if (active) accent.copy(alpha = 0.22f) else Color(0xFF171923))
+            .border(
+                1.dp,
+                if (active) accent else Color.White.copy(alpha = 0.12f),
+                RoundedCornerShape(8.dp)
+            )
+            .clickable { onClick() }
+            .padding(horizontal = 8.dp, vertical = 7.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.Center
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = null,
+            tint = if (active) accent else Color.White.copy(alpha = 0.65f),
+            modifier = Modifier.size(13.dp)
+        )
+        Spacer(modifier = Modifier.width(4.dp))
+        Text(
+            text = title,
+            color = if (active) Color.White else Color.White.copy(alpha = 0.75f),
+            fontSize = 10.sp,
+            fontWeight = FontWeight.Bold
+        )
     }
 }
 
-/**
- * Floating Sniper Scope Magnifier Reticle Overlay.
- */
-private class FloatingMagnifierOverlayView(
-    context: Context,
-    private var zoom: Float,
-    private val onDragDelta: (Float, Float) -> Unit
-) : View(context) {
+@Composable
+private fun FloatingMiniFpsHudPill(
+    telemetryEngine: HardwareTelemetryEngine,
+    onDragDelta: (Float, Float) -> Unit,
+    onClose: () -> Unit
+) {
+    var snap by remember { mutableStateOf(HardwareTelemetry()) }
+    val activeMode by TriggerEventBus.activePerformanceMode.collectAsState()
 
-    private var lastRawX = 0f
-    private var lastRawY = 0f
-
-    private val ringPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF00F0FF.toInt()
-        style = Paint.Style.STROKE
-    }
-    private val lensPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0x2200F0FF
-        style = Paint.Style.FILL
-    }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xFF00F0FF.toInt()
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
+    LaunchedEffect(activeMode) {
+        while (isActive) {
+            telemetryEngine.triggerLightweightFrameSample()
+            snap = telemetryEngine.sampleTelemetry(activeMode, measureNetworkPing = false)
+            delay(3000L)
+        }
     }
 
-    fun updateZoom(newZoom: Float) {
-        zoom = newZoom
-        invalidate()
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val density = resources.displayMetrics.density
-        val cx = width / 2f
-        val cy = height / 2f
-        val r = (width.coerceAtMost(height) / 2f) - (6f * density)
-
-        canvas.drawCircle(cx, cy, r, lensPaint)
-        ringPaint.strokeWidth = 2.5f * density
-        ringPaint.color = 0xFF00F0FF.toInt()
-        canvas.drawCircle(cx, cy, r, ringPaint)
-
-        // Inner sniper rangefinder rings
-        ringPaint.strokeWidth = 1.2f * density
-        ringPaint.color = 0x8800F0FF.toInt()
-        canvas.drawCircle(cx, cy, r * 0.58f, ringPaint)
-        canvas.drawLine(cx - r * 0.85f, cy, cx + r * 0.85f, cy, ringPaint)
-        canvas.drawLine(cx, cy - r * 0.85f, cx, cy + r * 0.85f, ringPaint)
-
-        textPaint.textSize = 9.5f * density
-        canvas.drawText("${(zoom * 10).toInt() / 10f}x SCOPE", cx, cy - r + (14f * density), textPaint)
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                lastRawX = event.rawX
-                lastRawY = event.rawY
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = event.rawX - lastRawX
-                val dy = event.rawY - lastRawY
-                lastRawX = event.rawX
-                lastRawY = event.rawY
-                onDragDelta(dx, dy)
-                return true
+    Surface(
+        shape = RoundedCornerShape(50),
+        color = Color(0xE60B0C12),
+        border = androidx.compose.foundation.BorderStroke(1.dp, activeMode.primaryColor.copy(alpha = 0.8f)),
+        modifier = Modifier.pointerInput(Unit) {
+            detectDragGestures { change, dragAmount ->
+                change.consume()
+                onDragDelta(dragAmount.x, dragAmount.y)
             }
         }
-        return true
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 5.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Bolt,
+                    contentDescription = null,
+                    tint = Color(0xFF00E676),
+                    modifier = Modifier.size(12.dp)
+                )
+                Text(
+                    text = "${snap.liveFps} FPS",
+                    color = Color(0xFF00E676),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Thermostat,
+                    contentDescription = null,
+                    tint = Color(0xFFFF9100),
+                    modifier = Modifier.size(12.dp)
+                )
+                Text(
+                    text = "${snap.batteryTempCelsius}°C",
+                    color = Color(0xFFFF9100),
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    fontFamily = FontFamily.Monospace
+                )
+            }
+            Text(
+                text = "${snap.pingMs}ms",
+                color = Color(0xFF00E5FF),
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
+            Icon(
+                imageVector = Icons.Default.Close,
+                contentDescription = "إغلاق",
+                tint = Color.White.copy(alpha = 0.6f),
+                modifier = Modifier
+                    .size(13.dp)
+                    .clickable { onClose() }
+            )
+        }
     }
 }
 
-private class OverlayCrosshairView(
-    context: Context,
-    private var config: CrosshairConfig
-) : View(context) {
-
-    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-        strokeCap = Paint.Cap.ROUND
-    }
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-
-    fun updateConfig(newConfig: CrosshairConfig) {
-        config = newConfig
-        invalidate()
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val density = resources.displayMetrics.density
-        val cx = width / 2f
-        val cy = height / 2f
-        val radius = (config.sizeDp * density) / 2f
-
-        val baseColor = config.colorOption.androidColorInt
-        val alphaInt = (config.opacity.coerceIn(0.2f, 1f) * 255).toInt()
-
-        strokePaint.color = baseColor
-        strokePaint.alpha = alphaInt
-        strokePaint.strokeWidth = config.strokeWidthDp * density
-
-        fillPaint.color = baseColor
-        fillPaint.alpha = alphaInt
+@Composable
+private fun FloatingCrosshairOverlayCanvas(config: CrosshairConfig) {
+    val accent = Color(config.colorHex).copy(alpha = config.opacity.coerceIn(0.2f, 1f))
+    Canvas(modifier = Modifier.fillMaxSize()) {
+        val center = Offset(size.width / 2f, size.height / 2f)
+        val radius = (config.sizeDp / 2f).dp.toPx()
+        val stroke = config.strokeWidthDp.dp.toPx().coerceAtLeast(1.5f)
 
         when (config.style) {
             CrosshairStyle.RED_DOT -> {
-                canvas.drawCircle(cx, cy, (radius * 0.28f).coerceAtLeast(4f), fillPaint)
+                drawCircle(color = Color.Black.copy(alpha = 0.55f), radius = stroke * 2.2f, center = center)
+                drawCircle(color = accent, radius = stroke * 1.6f, center = center)
             }
             CrosshairStyle.TACTICAL_CROSS -> {
-                val gap = radius * 0.25f
-                canvas.drawLine(cx - radius, cy, cx - gap, cy, strokePaint)
-                canvas.drawLine(cx + gap, cy, cx + radius, cy, strokePaint)
-                canvas.drawLine(cx, cy - radius, cx, cy - gap, strokePaint)
-                canvas.drawLine(cx, cy + gap, cx, cy + radius, strokePaint)
-                canvas.drawCircle(cx, cy, 2.5f * density, fillPaint)
+                val gap = radius * 0.28f
+                drawLine(accent, Offset(center.x - radius, center.y), Offset(center.x - gap, center.y), stroke)
+                drawLine(accent, Offset(center.x + gap, center.y), Offset(center.x + radius, center.y), stroke)
+                drawLine(accent, Offset(center.x, center.y - radius), Offset(center.x, center.y - gap), stroke)
+                drawLine(accent, Offset(center.x, center.y + gap), Offset(center.x, center.y + radius), stroke)
+                drawCircle(accent, radius = stroke * 0.8f, center = center)
             }
-            CrosshairStyle.CIRCLE_DOT -> {
-                canvas.drawCircle(cx, cy, radius * 0.72f, strokePaint)
-                canvas.drawCircle(cx, cy, 3f * density, fillPaint)
-                canvas.drawLine(cx - radius, cy, cx - radius * 0.5f, cy, strokePaint)
-                canvas.drawLine(cx + radius * 0.5f, cy, cx + radius, cy, strokePaint)
-                canvas.drawLine(cx, cy - radius, cx, cy - radius * 0.5f, strokePaint)
-                canvas.drawLine(cx, cy + radius * 0.5f, cx, cy + radius, strokePaint)
+            CrosshairStyle.SNIPER_CIRCLE -> {
+                drawCircle(accent, radius = radius, center = center, style = Stroke(width = stroke))
+                drawCircle(accent, radius = stroke, center = center)
             }
-            CrosshairStyle.SNIPER_CHEVRON -> {
-                val path = Path().apply {
-                    moveTo(cx - radius * 0.65f, cy + radius * 0.45f)
-                    lineTo(cx, cy)
-                    lineTo(cx + radius * 0.65f, cy + radius * 0.45f)
-                }
-                canvas.drawPath(path, strokePaint)
-                canvas.drawCircle(cx, cy - radius * 0.2f, 2.5f * density, fillPaint)
-            }
-            CrosshairStyle.CYBER_DIAMOND -> {
-                val path = Path().apply {
-                    moveTo(cx, cy - radius * 0.8f)
-                    lineTo(cx + radius * 0.8f, cy)
-                    lineTo(cx, cy + radius * 0.8f)
-                    lineTo(cx - radius * 0.8f, cy)
-                    close()
-                }
-                canvas.drawPath(path, strokePaint)
-                canvas.drawCircle(cx, cy, 3f * density, fillPaint)
-            }
-            CrosshairStyle.PREDATOR_TRI -> {
-                canvas.drawCircle(cx, cy - radius * 0.55f, 3.2f * density, fillPaint)
-                canvas.drawCircle(cx - radius * 0.5f, cy + radius * 0.4f, 3.2f * density, fillPaint)
-                canvas.drawCircle(cx + radius * 0.5f, cy + radius * 0.4f, 3.2f * density, fillPaint)
-                canvas.drawCircle(cx, cy, 1.8f * density, fillPaint)
-            }
-            CrosshairStyle.HOLLOW_RING -> {
-                canvas.drawCircle(cx, cy, radius * 0.65f, strokePaint)
-            }
-            CrosshairStyle.PULSE_CORE -> {
-                canvas.drawCircle(cx, cy, radius * 0.85f, strokePaint)
-                canvas.drawCircle(cx, cy, radius * 0.4f, strokePaint)
-                canvas.drawCircle(cx, cy, 3f * density, fillPaint)
+            CrosshairStyle.CHEVRON_PRO -> {
+                drawLine(accent, center, Offset(center.x - radius * 0.7f, center.y + radius * 0.7f), stroke)
+                drawLine(accent, center, Offset(center.x + radius * 0.7f, center.y + radius * 0.7f), stroke)
+                drawCircle(accent, radius = stroke * 0.85f, center = Offset(center.x, center.y - stroke * 2f))
             }
         }
     }
 }
 
-private class FloatingClonedButtonOverlayView(
-    context: Context,
-    private val button: ClonedTouchButton,
-    private val isLockedForPlay: Boolean,
-    private val opacity: Float,
-    private val onDragDelta: (Float, Float) -> Unit,
-    private val onTapDownUp: (Boolean) -> Unit
-) : View(context) {
+@Composable
+private fun FloatingClonedSourceNode(
+    button: ClonedTouchButton,
+    editLocked: Boolean,
+    onDragDelta: (Float, Float) -> Unit
+) {
+    var isPressed by remember { mutableStateOf(false) }
+    var autoLocked by remember { mutableStateOf(false) }
+    val color = Color(button.colorHex)
 
-    private var isPressedNow = false
-    private var lastRawX = 0f
-    private var lastRawY = 0f
-
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.FILL
-    }
-    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        style = Paint.Style.STROKE
-    }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = Color.WHITE
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
-    }
-
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val density = resources.displayMetrics.density
-        val cx = width / 2f
-        val cy = height / 2f
-        val r = (width.coerceAtMost(height) / 2f) - (3f * density)
-
-        val alphaInt = (opacity.coerceIn(0.3f, 1f) * 255).toInt()
-        fillPaint.color = if (isPressedNow) button.colorHex.toInt() else 0xCC101420.toInt()
-        fillPaint.alpha = alphaInt
-        canvas.drawCircle(cx, cy, r, fillPaint)
-
-        strokePaint.color = button.colorHex.toInt()
-        strokePaint.strokeWidth = if (isLockedForPlay) 2.5f * density else 3.5f * density
-        canvas.drawCircle(cx, cy, r, strokePaint)
-
-        textPaint.textSize = 13f * density
-        textPaint.color = if (isPressedNow) Color.BLACK else Color.WHITE
-        canvas.drawText(button.badge, cx, cy + (2f * density), textPaint)
-
-        textPaint.textSize = 8.5f * density
-        textPaint.color = if (isLockedForPlay) 0xFF00E676.toInt() else 0xFFFFB300.toInt()
-        val modeLabel = if (isLockedForPlay) "اضغط" else "اسحبني"
-        canvas.drawText(modeLabel, cx, cy + (13f * density), textPaint)
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        if (!isLockedForPlay) {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    lastRawX = event.rawX
-                    lastRawY = event.rawY
-                    return true
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(CircleShape)
+            .background(
+                if (isPressed || autoLocked) color.copy(alpha = 0.55f)
+                else Color(0xCC10131C)
+            )
+            .border(
+                width = if (isPressed || autoLocked) 2.5.dp else 1.5.dp,
+                color = color.copy(alpha = button.opacity),
+                shape = CircleShape
+            )
+            .pointerInput(button.id, button.mode, editLocked) {
+                if (!editLocked) {
+                    detectDragGestures { change, dragAmount ->
+                        change.consume()
+                        onDragDelta(dragAmount.x, dragAmount.y)
+                    }
+                } else {
+                    detectTapGestures(
+                        onPress = {
+                            if (button.mode == ClonedButtonMode.AUTO_LOCK) {
+                                autoLocked = !autoLocked
+                                TriggerEventBus.emitClonedButtonTap(button, isDown = autoLocked)
+                            } else {
+                                isPressed = true
+                                TriggerEventBus.emitClonedButtonTap(button, isDown = true)
+                                tryAwaitRelease()
+                                isPressed = false
+                                TriggerEventBus.emitClonedButtonTap(button, isDown = false)
+                            }
+                        }
+                    )
                 }
-                MotionEvent.ACTION_MOVE -> {
-                    val dx = event.rawX - lastRawX
-                    val dy = event.rawY - lastRawY
-                    lastRawX = event.rawX
-                    lastRawY = event.rawY
-                    onDragDelta(dx, dy)
-                    return true
-                }
-            }
-            return true
-        } else {
-            when (event.actionMasked) {
-                MotionEvent.ACTION_DOWN -> {
-                    isPressedNow = true
-                    invalidate()
-                    onTapDownUp(true)
-                    return true
-                }
-                MotionEvent.ACTION_UP, MotionEvent.ACTION_CANCEL -> {
-                    isPressedNow = false
-                    invalidate()
-                    onTapDownUp(false)
-                    return true
-                }
-            }
-            return true
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+            Text(
+                text = button.label,
+                color = Color.White,
+                fontSize = 12.sp,
+                fontWeight = FontWeight.Black,
+                fontFamily = FontFamily.Monospace
+            )
+            Text(
+                text = if (editLocked) "TAP" else "DRAG",
+                color = color,
+                fontSize = 7.sp,
+                fontWeight = FontWeight.Bold,
+                fontFamily = FontFamily.Monospace
+            )
         }
     }
 }
 
-private class FloatingClonedTargetOverlayView(
-    context: Context,
-    private val button: ClonedTouchButton,
-    private val onDragDelta: (Float, Float) -> Unit
-) : View(context) {
-
-    private var lastRawX = 0f
-    private var lastRawY = 0f
-
-    private val strokePaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = button.colorHex.toInt()
-        style = Paint.Style.STROKE
+@Composable
+private fun FloatingClonedTargetPin(
+    button: ClonedTouchButton,
+    onDragDelta: (Float, Float) -> Unit
+) {
+    val color = Color(button.colorHex)
+    Box(
+        modifier = Modifier
+            .fillMaxSize()
+            .clip(CircleShape)
+            .background(color.copy(alpha = 0.25f))
+            .border(1.5.dp, color, CircleShape)
+            .pointerInput(button.id) {
+                detectDragGestures { change, dragAmount ->
+                    change.consume()
+                    onDragDelta(dragAmount.x, dragAmount.y)
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "🎯${button.label}",
+            color = Color.White,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Black
+        )
     }
-    private val fillPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = 0xAA07080C.toInt()
-        style = Paint.Style.FILL
+}
+
+private class OverlayComposeLifecycleOwner :
+    LifecycleOwner,
+    ViewModelStoreOwner,
+    SavedStateRegistryOwner {
+
+    private val lifecycleRegistry = LifecycleRegistry(this)
+    private val store = ViewModelStore()
+    private val savedStateRegistryController = SavedStateRegistryController.create(this)
+
+    override val lifecycle: Lifecycle
+        get() = lifecycleRegistry
+
+    override val viewModelStore: ViewModelStore
+        get() = store
+
+    override val savedStateRegistry: SavedStateRegistry
+        get() = savedStateRegistryController.savedStateRegistry
+
+    fun onCreate() {
+        savedStateRegistryController.performRestore(null)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_CREATE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_START)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_RESUME)
     }
-    private val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-        color = button.colorHex.toInt()
-        textAlign = Paint.Align.CENTER
-        isFakeBoldText = true
-    }
 
-    override fun onDraw(canvas: Canvas) {
-        super.onDraw(canvas)
-        val density = resources.displayMetrics.density
-        val cx = width / 2f
-        val cy = height / 2f
-        val r = (width.coerceAtMost(height) / 2f) - (3f * density)
-
-        canvas.drawCircle(cx, cy, r, fillPaint)
-        strokePaint.strokeWidth = 2f * density
-        canvas.drawCircle(cx, cy, r, strokePaint)
-        canvas.drawLine(cx - r, cy, cx + r, cy, strokePaint)
-        canvas.drawLine(cx, cy - r, cx, cy + r, strokePaint)
-
-        textPaint.textSize = 9f * density
-        canvas.drawText("🎯${button.badge}", cx, cy + (3f * density), textPaint)
-    }
-
-    override fun onTouchEvent(event: MotionEvent): Boolean {
-        when (event.actionMasked) {
-            MotionEvent.ACTION_DOWN -> {
-                lastRawX = event.rawX
-                lastRawY = event.rawY
-                return true
-            }
-            MotionEvent.ACTION_MOVE -> {
-                val dx = event.rawX - lastRawX
-                val dy = event.rawY - lastRawY
-                lastRawX = event.rawX
-                lastRawY = event.rawY
-                onDragDelta(dx, dy)
-                return true
-            }
-        }
-        return true
+    fun onDestroy() {
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        store.clear()
     }
 }

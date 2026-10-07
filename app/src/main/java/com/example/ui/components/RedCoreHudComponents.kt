@@ -28,12 +28,13 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.Gamepad
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Memory
 import androidx.compose.material.icons.filled.NetworkCheck
+import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.Thermostat
 import androidx.compose.material3.Icon
@@ -69,6 +70,7 @@ import com.example.ui.theme.GunmetalCard
 import com.example.ui.theme.GunmetalElevated
 import com.example.ui.theme.MatrixGreen
 import com.example.ui.theme.MoltenAmber
+import com.example.ui.theme.ObsidianBlack
 import com.example.ui.theme.ObsidianSurface
 import com.example.ui.theme.OrbitronFontFamily
 import com.example.ui.theme.SilverMist
@@ -78,12 +80,11 @@ import com.example.ui.theme.TitaniumWhite
 fun RedCoreTopStatusBar(
     telemetry: HardwareTelemetry,
     performanceMode: PerformanceMode,
-    triggersEnabled: Boolean,
     crosshairEnabled: Boolean,
-    l1Pressed: Boolean,
-    r1Pressed: Boolean,
-    onQuickTriggerClick: () -> Unit,
+    isMasterRunning: Boolean,
+    onQuickAddGameClick: () -> Unit,
     onQuickCrosshairClick: () -> Unit,
+    onQuickStartOrStopClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     Surface(
@@ -92,7 +93,7 @@ fun RedCoreTopStatusBar(
             .padding(horizontal = 12.dp, vertical = 6.dp),
         color = ObsidianSurface.copy(alpha = 0.95f),
         shape = CutCornerShape(topStart = 12.dp, bottomEnd = 12.dp, topEnd = 4.dp, bottomStart = 4.dp),
-        border = BorderStroke(1.dp, performanceMode.color.copy(alpha = 0.45f))
+        border = BorderStroke(1.dp, performanceMode.primaryColor.copy(alpha = 0.45f))
     ) {
         Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)) {
             Row(
@@ -106,53 +107,66 @@ fun RedCoreTopStatusBar(
                         modifier = Modifier
                             .size(10.dp)
                             .clip(CircleShape)
-                            .background(performanceMode.color)
+                            .background(performanceMode.primaryColor)
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
                         text = "HASSAN GAMES",
                         fontFamily = OrbitronFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 14.sp,
+                        fontSize = 13.sp,
                         color = TitaniumWhite
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(4.dp))
-                            .background(performanceMode.color.copy(alpha = 0.2f))
-                            .border(1.dp, performanceMode.color, RoundedCornerShape(4.dp))
+                            .background(performanceMode.primaryColor.copy(alpha = 0.2f))
+                            .border(1.dp, performanceMode.primaryColor, RoundedCornerShape(4.dp))
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     ) {
                         Text(
-                            text = performanceMode.englishBadge,
+                            text = performanceMode.badgeText,
                             fontFamily = OrbitronFontFamily,
-                            fontSize = 10.sp,
+                            fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = performanceMode.color
+                            color = performanceMode.primaryColor
                         )
                     }
                 }
 
-                // Live L1 / R1 Hardware Key Indicator Pills
+                // Quick Gaming Center Actions: + ADD GAME, Crosshair, Start/Stop
                 Row(
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    TriggerKeyPill(
-                        label = "L1 VOL+",
-                        isPressed = l1Pressed,
-                        isEnabled = triggersEnabled,
-                        activeColor = CyberCyan,
-                        onClick = onQuickTriggerClick
-                    )
-                    TriggerKeyPill(
-                        label = "R1 VOL-",
-                        isPressed = r1Pressed,
-                        isEnabled = triggersEnabled,
-                        activeColor = CrimsonRed,
-                        onClick = onQuickTriggerClick
-                    )
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(CyberCyan.copy(alpha = 0.2f))
+                            .border(1.dp, CyberCyan, RoundedCornerShape(6.dp))
+                            .clickable { onQuickAddGameClick() }
+                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                            .testTag("top_bar_add_game_button")
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Add,
+                                contentDescription = "إضافة لعبة",
+                                tint = CyberCyan,
+                                modifier = Modifier.size(13.dp)
+                            )
+                            Spacer(modifier = Modifier.width(2.dp))
+                            Text(
+                                text = "ADD GAME",
+                                fontFamily = OrbitronFontFamily,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyberCyan
+                            )
+                        }
+                    }
+
                     Box(
                         modifier = Modifier
                             .clip(RoundedCornerShape(6.dp))
@@ -173,6 +187,30 @@ fun RedCoreTopStatusBar(
                             imageVector = Icons.Default.GpsFixed,
                             contentDescription = "تبديل مؤشر التصويب",
                             tint = if (crosshairEnabled) CrimsonRed else SilverMist,
+                            modifier = Modifier.size(15.dp)
+                        )
+                    }
+
+                    Box(
+                        modifier = Modifier
+                            .clip(RoundedCornerShape(6.dp))
+                            .background(
+                                if (isMasterRunning) CrimsonRed.copy(alpha = 0.22f)
+                                else MatrixGreen.copy(alpha = 0.22f)
+                            )
+                            .border(
+                                1.dp,
+                                if (isMasterRunning) CrimsonRed else MatrixGreen,
+                                RoundedCornerShape(6.dp)
+                            )
+                            .clickable { onQuickStartOrStopClick() }
+                            .padding(horizontal = 6.dp, vertical = 4.dp)
+                            .testTag("top_start_stop_button")
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.PowerSettingsNew,
+                            contentDescription = "تشغيل أو إنهاء التطبيق",
+                            tint = if (isMasterRunning) CrimsonRed else MatrixGreen,
                             modifier = Modifier.size(15.dp)
                         )
                     }
@@ -213,48 +251,6 @@ fun RedCoreTopStatusBar(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun TriggerKeyPill(
-    label: String,
-    isPressed: Boolean,
-    isEnabled: Boolean,
-    activeColor: Color,
-    onClick: () -> Unit
-) {
-    val bgColor = when {
-        isPressed -> activeColor
-        isEnabled -> activeColor.copy(alpha = 0.16f)
-        else -> GunmetalElevated
-    }
-    val borderColor = when {
-        isPressed -> TitaniumWhite
-        isEnabled -> activeColor
-        else -> CarbonBorder
-    }
-    val textColor = when {
-        isPressed -> Color.Black
-        isEnabled -> activeColor
-        else -> SilverMist
-    }
-
-    Box(
-        modifier = Modifier
-            .clip(CutCornerShape(4.dp))
-            .background(bgColor)
-            .border(1.dp, borderColor, CutCornerShape(4.dp))
-            .clickable { onClick() }
-            .padding(horizontal = 7.dp, vertical = 3.dp)
-    ) {
-        Text(
-            text = label,
-            fontFamily = OrbitronFontFamily,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = textColor
-        )
     }
 }
 
@@ -356,7 +352,6 @@ fun RotatingCoolingTurbine(
     isTurboBoosting: Boolean,
     size: Dp = 76.dp
 ) {
-    // Thermal optimization: only spin at high speed during active boost; static when idle so GPU stays cool
     val angle = if (isTurboBoosting) {
         val infiniteTransition = rememberInfiniteTransition(label = "turbine_rotation")
         val animated by infiniteTransition.animateFloat(
@@ -381,7 +376,6 @@ fun RotatingCoolingTurbine(
             val radius = this.size.minDimension / 2f
             val center = Offset(this.size.width / 2f, this.size.height / 2f)
 
-            // Outer glowing ring
             drawCircle(
                 color = accentColor.copy(alpha = 0.22f),
                 radius = radius,
@@ -395,7 +389,6 @@ fun RotatingCoolingTurbine(
                 style = Stroke(width = 2.5f)
             )
 
-            // Rotating turbine blades
             rotate(degrees = angle, pivot = center) {
                 for (i in 0 until 8) {
                     rotate(degrees = i * 45f, pivot = center) {
@@ -415,7 +408,6 @@ fun RotatingCoolingTurbine(
                 }
             }
 
-            // Inner core
             drawCircle(
                 color = GunmetalCard,
                 radius = radius * 0.28f,
@@ -440,11 +432,16 @@ fun CrosshairCanvasView(
         val cx = size.width / 2f
         val cy = size.height / 2f
         val radius = size.minDimension / 2f
-        val baseColor = config.colorOption.color.copy(alpha = config.opacity.coerceIn(0.2f, 1f))
+        val baseColor = Color(config.colorHex).copy(alpha = config.opacity.coerceIn(0.2f, 1f))
         val strokePx = config.strokeWidthDp.dp.toPx()
 
         when (config.style) {
             CrosshairStyle.RED_DOT -> {
+                drawCircle(
+                    color = ObsidianBlack.copy(alpha = 0.5f),
+                    radius = (radius * 0.36f).coerceAtLeast(6f),
+                    center = Offset(cx, cy)
+                )
                 drawCircle(
                     color = baseColor,
                     radius = (radius * 0.28f).coerceAtLeast(4f),
@@ -459,7 +456,7 @@ fun CrosshairCanvasView(
                 drawLine(baseColor, Offset(cx, cy + gap), Offset(cx, cy + radius), strokePx, StrokeCap.Round)
                 drawCircle(baseColor, radius = strokePx * 0.9f, center = Offset(cx, cy))
             }
-            CrosshairStyle.CIRCLE_DOT -> {
+            CrosshairStyle.SNIPER_CIRCLE -> {
                 drawCircle(
                     color = baseColor,
                     radius = radius * 0.7f,
@@ -472,7 +469,7 @@ fun CrosshairCanvasView(
                 drawLine(baseColor, Offset(cx, cy - radius), Offset(cx, cy - radius * 0.45f), strokePx)
                 drawLine(baseColor, Offset(cx, cy + radius * 0.45f), Offset(cx, cy + radius), strokePx)
             }
-            CrosshairStyle.SNIPER_CHEVRON -> {
+            CrosshairStyle.CHEVRON_PRO -> {
                 val path = Path().apply {
                     moveTo(cx - radius * 0.65f, cy + radius * 0.45f)
                     lineTo(cx, cy)
@@ -480,46 +477,6 @@ fun CrosshairCanvasView(
                 }
                 drawPath(path, baseColor, style = Stroke(width = strokePx, cap = StrokeCap.Round))
                 drawCircle(baseColor, radius = strokePx, center = Offset(cx, cy - radius * 0.22f))
-            }
-            CrosshairStyle.CYBER_DIAMOND -> {
-                val path = Path().apply {
-                    moveTo(cx, cy - radius * 0.8f)
-                    lineTo(cx + radius * 0.8f, cy)
-                    lineTo(cx, cy + radius * 0.8f)
-                    lineTo(cx - radius * 0.8f, cy)
-                    close()
-                }
-                drawPath(path, baseColor, style = Stroke(width = strokePx))
-                drawCircle(baseColor, radius = strokePx * 1.1f, center = Offset(cx, cy))
-            }
-            CrosshairStyle.PREDATOR_TRI -> {
-                drawCircle(baseColor, radius = strokePx * 1.3f, center = Offset(cx, cy - radius * 0.55f))
-                drawCircle(baseColor, radius = strokePx * 1.3f, center = Offset(cx - radius * 0.5f, cy + radius * 0.42f))
-                drawCircle(baseColor, radius = strokePx * 1.3f, center = Offset(cx + radius * 0.5f, cy + radius * 0.42f))
-                drawCircle(baseColor, radius = strokePx * 0.7f, center = Offset(cx, cy))
-            }
-            CrosshairStyle.HOLLOW_RING -> {
-                drawCircle(
-                    color = baseColor,
-                    radius = radius * 0.68f,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = strokePx)
-                )
-            }
-            CrosshairStyle.PULSE_CORE -> {
-                drawCircle(
-                    color = baseColor,
-                    radius = radius * 0.85f,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = strokePx * 0.8f)
-                )
-                drawCircle(
-                    color = baseColor,
-                    radius = radius * 0.42f,
-                    center = Offset(cx, cy),
-                    style = Stroke(width = strokePx)
-                )
-                drawCircle(baseColor, radius = strokePx, center = Offset(cx, cy))
             }
         }
     }

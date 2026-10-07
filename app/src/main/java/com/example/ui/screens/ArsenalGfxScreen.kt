@@ -1,7 +1,6 @@
 package com.example.ui.screens
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -17,25 +16,20 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.BatterySaver
-import androidx.compose.material.icons.filled.DisplaySettings
-import androidx.compose.material.icons.filled.DoNotTouch
-import androidx.compose.material.icons.filled.GraphicEq
+import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Mic
-import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material.icons.filled.OpenInNew
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.SwipeLeft
 import androidx.compose.material.icons.filled.TouchApp
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.WifiTethering
+import androidx.compose.material.icons.filled.Tune
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -51,31 +45,30 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import com.example.R
 import com.example.model.AdvisorPresetMode
-import com.example.model.AudioRadarPreset
 import com.example.model.AutoSettingsRecommendation
-import com.example.model.CrosshairColorOption
+import com.example.model.ClonedButtonsConfig
+import com.example.model.ClonedTouchButton
 import com.example.model.CrosshairConfig
 import com.example.model.CrosshairStyle
-import com.example.model.EdgeSidebarConfig
-import com.example.model.LowEndOptimizerConfig
-import com.example.model.NotificationShieldState
-import com.example.model.ScreenVisionFilter
+import com.example.model.GfxResolutionPreset
+import com.example.model.HardwareTelemetry
+import com.example.model.LowEndDeviceConfig
 import com.example.model.SmartThermalMode
 import com.example.model.SmartThermalStatus
-import com.example.model.VoiceModPreset
+import com.example.model.TouchSamplingRate
 import com.example.ui.components.AutoSettingsAdvisorCard
+import com.example.ui.components.ClonedButtonsStudioCard
 import com.example.ui.components.CrosshairCanvasView
+import com.example.ui.components.CustomAppIconStudioCard
 import com.example.ui.components.GameBoxEnvironmentCard
-import com.example.ui.components.SmartThermalAndShieldCard
-import com.example.ui.components.StudioVoiceChangerCard
+import com.example.ui.components.SmartThermalModeCard
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.CyberCyan
@@ -93,180 +86,130 @@ import kotlin.math.roundToInt
 @Composable
 fun ArsenalGfxScreen(
     crosshairConfig: CrosshairConfig,
-    edgeSidebarConfig: EdgeSidebarConfig,
-    lowEndConfig: LowEndOptimizerConfig,
-    canDrawSystemOverlays: Boolean,
-    isSystemOverlayRunning: Boolean,
+    clonedButtonsConfig: ClonedButtonsConfig,
+    gfxResolution: GfxResolutionPreset,
+    touchSamplingRate: TouchSamplingRate,
+    lowEndConfig: LowEndDeviceConfig,
+    telemetry: HardwareTelemetry,
+    smartThermalStatus: SmartThermalStatus,
+    advisorPresetMode: AdvisorPresetMode,
+    autoSettingsRecommendation: AutoSettingsRecommendation,
+    canDrawOverlays: Boolean,
+    isAccessibilityRunning: Boolean,
+    isSystemFloatingBarRunning: Boolean,
+    fpsPillVisible: Boolean,
     onUpdateCrosshair: ((CrosshairConfig) -> CrosshairConfig) -> Unit,
-    onUpdateEdgeSidebar: ((EdgeSidebarConfig) -> EdgeSidebarConfig) -> Unit,
-    onUpdateLowEnd: ((LowEndOptimizerConfig) -> LowEndOptimizerConfig) -> Unit,
-    onOpenInAppSidebarPreview: () -> Unit,
-    onEnableSystemFloatingSidebar: () -> Unit,
-    onSelectAudioRadar: (AudioRadarPreset) -> Unit,
-    onSelectVoiceMod: (VoiceModPreset) -> Unit,
-    onOpenAccessibilityForOverlay: () -> Unit,
-    isLiveMicActive: Boolean = false,
-    isRecordingClip: Boolean = false,
-    isPlayingClip: Boolean = false,
-    micInputLevel: Float = 0f,
-    voiceStatusText: String = "",
-    noiseGateEnabled: Boolean = true,
-    hasMicPermission: () -> Boolean = { false },
-    onToggleLiveMic: () -> Unit = {},
-    onStartOrStopClipTest: () -> Unit = {},
-    onReplayRecordedClip: () -> Unit = {},
-    onToggleNoiseGate: (Boolean) -> Unit = {},
-    selectedDemoPhraseIndex: Int = 0,
-    onPlayReadyDemoWithoutMic: (VoiceModPreset, Int) -> Unit = { preset, _ -> onSelectVoiceMod(preset) },
-    smartThermalStatus: SmartThermalStatus = SmartThermalStatus(),
-    notificationShieldState: NotificationShieldState = NotificationShieldState(),
-    onSelectThermalMode: (SmartThermalMode) -> Unit = {},
-    onToggleNotificationShield: () -> Unit = {},
-    onOpenDndPermissionSettings: () -> Unit = {},
-    onToggleHudMetric: (fps: Boolean?, temp: Boolean?, ram: Boolean?, magnifier: Boolean?) -> Unit = { _, _, _, _ -> },
-    onUpdateMagnifierZoom: (Float) -> Unit = {},
-    autoSettingsRecommendation: AutoSettingsRecommendation = AutoSettingsRecommendation(),
-    onSelectAdvisorMode: (AdvisorPresetMode) -> Unit = {},
-    onApplyAdvisorRecommendations: () -> Unit = {}
+    onUpdateClonedButtons: ((ClonedButtonsConfig) -> ClonedButtonsConfig) -> Unit,
+    onToggleClonedButtonsOverlay: () -> Unit,
+    onSimulateClonedTap: (ClonedTouchButton, Boolean) -> Unit,
+    onOpenAccessibilitySettings: () -> Unit,
+    onSelectResolution: (GfxResolutionPreset) -> Unit,
+    onSelectTouchRate: (TouchSamplingRate) -> Unit,
+    onUpdateLowEnd: ((LowEndDeviceConfig) -> LowEndDeviceConfig) -> Unit,
+    onSelectSmartThermalMode: (SmartThermalMode) -> Unit,
+    onSelectAdvisorPreset: (AdvisorPresetMode) -> Unit,
+    onApplyAdvisorPreset: () -> Unit,
+    onToggleFpsPill: (Boolean) -> Unit,
+    onLaunchSystemFloatingSidebar: () -> Unit,
+    onOpenOverlayPermissionSettings: () -> Unit,
+    onTestNetworkPing: () -> Unit
 ) {
-    LazyColumn(
+    Column(
         modifier = Modifier
             .fillMaxSize()
-            .testTag("arsenal_gfx_list"),
-        contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+            .verticalScroll(rememberScrollState())
+            .padding(horizontal = 16.dp, vertical = 12.dp)
+            .testTag("arsenal_gfx_screen"),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
-        // 0. Auto Settings Advisor Card (Hardware-driven Graphics & FPS Advisor)
-        item {
-            AutoSettingsAdvisorCard(
-                recommendation = autoSettingsRecommendation,
-                onSelectMode = onSelectAdvisorMode,
-                onApplyRecommendedTools = onApplyAdvisorRecommendations
-            )
-        }
+        // 1. Movable Cloned Touch Buttons Studio (C1-C4 On-Screen Touch Cloner)
+        ClonedButtonsStudioCard(
+            config = clonedButtonsConfig,
+            isAccessibilityRunning = isAccessibilityRunning,
+            onUpdateConfig = onUpdateClonedButtons,
+            onToggleSystemOverlay = onToggleClonedButtonsOverlay,
+            onSimulateClonedTap = onSimulateClonedTap,
+            onOpenAccessibilitySettings = onOpenAccessibilitySettings
+        )
 
-        // 0b. Smart Thermal Mode + Notification Shield + Floating HUD & Magnifier
-        item {
-            SmartThermalAndShieldCard(
-                thermalStatus = smartThermalStatus,
-                shieldState = notificationShieldState,
-                lowEndConfig = lowEndConfig,
-                onSelectThermalMode = onSelectThermalMode,
-                onToggleNotificationShield = onToggleNotificationShield,
-                onOpenDndPermissionSettings = onOpenDndPermissionSettings,
-                onToggleHudMetric = onToggleHudMetric,
-                onUpdateMagnifierZoom = onUpdateMagnifierZoom
-            )
-        }
+        // 2. Tactical Crosshair Studio Card
+        CrosshairStudioCard(
+            config = crosshairConfig,
+            canDrawOverlays = canDrawOverlays,
+            onUpdateCrosshair = onUpdateCrosshair,
+            onOpenOverlayPermissionSettings = onOpenOverlayPermissionSettings
+        )
 
-        // 1. Floating Edge-Swipe Game Bar Card (Game Genie / Game Turbo Sidebar)
-        item {
-            FloatingEdgeSidebarSettingsCard(
-                sidebarConfig = edgeSidebarConfig,
-                canDrawSystemOverlays = canDrawSystemOverlays,
-                isSystemOverlayRunning = isSystemOverlayRunning,
-                onUpdateEdgeSidebar = onUpdateEdgeSidebar,
-                onOpenInAppSidebarPreview = onOpenInAppSidebarPreview,
-                onEnableSystemFloatingSidebar = onEnableSystemFloatingSidebar
-            )
-        }
+        // 3. Auto Game Settings Advisor Card
+        AutoSettingsAdvisorCard(
+            recommendation = autoSettingsRecommendation,
+            onSelectMode = onSelectAdvisorPreset,
+            onApplyRecommendedTools = onApplyAdvisorPreset
+        )
 
-        // 2. Studio HD Microphone Voice Changer Card (Robot / Squirrel / Female / Male)
-        item {
-            StudioVoiceChangerCard(
-                activeVoicePreset = lowEndConfig.voiceModPreset,
-                isLiveMicActive = isLiveMicActive,
-                isRecordingClip = isRecordingClip,
-                isPlayingClip = isPlayingClip,
-                micInputLevel = micInputLevel,
-                voiceStatusText = voiceStatusText,
-                noiseGateEnabled = noiseGateEnabled,
-                hasMicPermission = hasMicPermission,
-                onSelectVoicePreset = onSelectVoiceMod,
-                onToggleLiveMic = onToggleLiveMic,
-                onStartOrStopClipTest = onStartOrStopClipTest,
-                onReplayRecordedClip = onReplayRecordedClip,
-                onToggleNoiseGate = onToggleNoiseGate,
-                selectedDemoPhraseIndex = selectedDemoPhraseIndex,
-                onPlayReadyDemoWithoutMic = onPlayReadyDemoWithoutMic
-            )
-        }
+        // 4. GFX Resolution & Touch Sampling Rate Card
+        GfxAndTouchTunerCard(
+            gfxResolution = gfxResolution,
+            touchSamplingRate = touchSamplingRate,
+            lowEndConfig = lowEndConfig,
+            fpsPillVisible = fpsPillVisible,
+            isSystemFloatingBarRunning = isSystemFloatingBarRunning,
+            onSelectResolution = onSelectResolution,
+            onSelectTouchRate = onSelectTouchRate,
+            onUpdateLowEnd = onUpdateLowEnd,
+            onToggleFpsPill = onToggleFpsPill,
+            onLaunchSystemFloatingSidebar = onLaunchSystemFloatingSidebar
+        )
 
-        // 3. Multi-Brand Screen Vision Filters (ROG Night Hunter / Black Shark / POCO HDR)
-        item {
-            ScreenVisionFiltersCard(
-                activeFilter = lowEndConfig.visionFilter,
-                onSelectFilter = { filter ->
-                    onUpdateLowEnd { it.copy(visionFilter = filter) }
-                }
-            )
-        }
+        // 5. Smart Thermal Control Card
+        SmartThermalModeCard(
+            thermalStatus = smartThermalStatus,
+            onSelectMode = onSelectSmartThermalMode
+        )
 
-        // 3. 3D Footsteps Audio Radar & Voice Changer Card (POCO Game Turbo & RedMagic)
-        item {
-            AudioRadarAndVoiceChangerCard(
-                activeAudioPreset = lowEndConfig.audioRadarPreset,
-                activeVoicePreset = lowEndConfig.voiceModPreset,
-                onSelectAudioRadar = onSelectAudioRadar,
-                onSelectVoiceMod = onSelectVoiceMod
-            )
-        }
+        // 6. Gaming Environment & Network Card
+        GameBoxEnvironmentCard(
+            lowEndConfig = lowEndConfig,
+            onUpdateLowEnd = onUpdateLowEnd,
+            onTestNetworkPing = onTestNetworkPing
+        )
 
-        // 4. Pro Crosshair Studio Card
-        item {
-            ProCrosshairStudioCard(
-                config = crosshairConfig,
-                onUpdateCrosshair = onUpdateCrosshair,
-                onOpenAccessibilityForOverlay = onOpenAccessibilityForOverlay
-            )
-        }
+        // 7. Custom App Icon Studio Card
+        CustomAppIconStudioCard(
+            defaultDrawableRes = R.drawable.ic_launcher_foreground
+        )
 
-        // 5. GG GameBox Pro Environment & DNS Optimizer Card
-        item {
-            GameBoxEnvironmentCard(
-                lowEndConfig = lowEndConfig,
-                onUpdateLowEnd = onUpdateLowEnd
-            )
-        }
-
-        // 6. Low-End Resolution & Touch Sampling Booster Card
-        item {
-            LowEndResolutionAndTouchCard(
-                lowEndConfig = lowEndConfig,
-                onUpdateLowEnd = onUpdateLowEnd
-            )
-        }
-
-        // 6. GPU, Mistouch Shield, Bypass Charging & Black-Screen AFK Tweaks Card
-        item {
-            GpuAndSystemTweaksCard(
-                lowEndConfig = lowEndConfig,
-                onUpdateLowEnd = onUpdateLowEnd
-            )
-        }
-
-        item {
-            Spacer(modifier = Modifier.height(16.dp))
-        }
+        Spacer(modifier = Modifier.height(24.dp))
     }
 }
 
 @Composable
-private fun FloatingEdgeSidebarSettingsCard(
-    sidebarConfig: EdgeSidebarConfig,
-    canDrawSystemOverlays: Boolean,
-    isSystemOverlayRunning: Boolean,
-    onUpdateEdgeSidebar: ((EdgeSidebarConfig) -> EdgeSidebarConfig) -> Unit,
-    onOpenInAppSidebarPreview: () -> Unit,
-    onEnableSystemFloatingSidebar: () -> Unit
+private fun CrosshairStudioCard(
+    config: CrosshairConfig,
+    canDrawOverlays: Boolean,
+    onUpdateCrosshair: ((CrosshairConfig) -> CrosshairConfig) -> Unit,
+    onOpenOverlayPermissionSettings: () -> Unit
 ) {
+    val colorOptions = listOf(
+        0xFFFF1744L to "أحمر ليزر",
+        0xFF00E676L to "أخضر نيون",
+        0xFF00E5FFL to "سماوي سيبراني",
+        0xFFFFEA00L to "أصفر ذهبي",
+        0xFFFFFFFFL to "أبيض نقي"
+    )
+
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = CutCornerShape(topStart = 16.dp, bottomEnd = 16.dp),
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("crosshair_studio_card"),
+        shape = CutCornerShape(topStart = 18.dp, bottomEnd = 18.dp, topEnd = 8.dp, bottomStart = 8.dp),
         color = GunmetalCard,
-        border = BorderStroke(1.5.dp, CyberCyan.copy(alpha = 0.8f))
+        border = BorderStroke(1.5.dp, CrimsonRed.copy(alpha = 0.75f))
     ) {
-        Column(modifier = Modifier.padding(14.dp)) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -278,609 +221,375 @@ private fun FloatingEdgeSidebarSettingsCard(
                 ) {
                     Box(
                         modifier = Modifier
-                            .size(44.dp)
+                            .size(40.dp)
                             .clip(CutCornerShape(10.dp))
-                            .background(CyberCyan.copy(alpha = 0.18f))
-                            .border(1.dp, CyberCyan, CutCornerShape(10.dp)),
+                            .background(CrimsonRed.copy(alpha = 0.16f))
+                            .border(1.dp, CrimsonRed, CutCornerShape(10.dp)),
                         contentAlignment = Alignment.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.SwipeLeft,
+                            imageVector = Icons.Default.GpsFixed,
                             contentDescription = null,
-                            tint = CyberCyan,
-                            modifier = Modifier.size(24.dp)
+                            tint = CrimsonRed,
+                            modifier = Modifier.size(22.dp)
                         )
                     }
                     Spacer(modifier = Modifier.width(10.dp))
                     Column {
                         Text(
-                            text = "الشريط الجانبي العائم فوق الألعاب (Edge Game Bar)",
-                            style = MaterialTheme.typography.titleMedium,
+                            text = "استوديو مؤشر التصويب العائم (Crosshair Overlay)",
+                            style = MaterialTheme.typography.titleSmall,
                             color = TitaniumWhite,
                             fontWeight = FontWeight.Bold
                         )
                         Text(
-                            text = "اسحب من جنب الجوال أثناء اللعب لفتح لوحة التقوية بدون الخروج من اللعبة!",
+                            text = "يظهر فوق الألعاب في منتصف الشاشة بدون أن يمنع لمس اللعبة",
                             style = MaterialTheme.typography.bodySmall,
-                            color = CyberCyan
+                            color = SilverMist,
+                            fontSize = 11.sp
                         )
                     }
                 }
+
                 Switch(
-                    checked = sidebarConfig.enabledInApp,
+                    checked = config.enabled,
                     onCheckedChange = { enabled ->
-                        onUpdateEdgeSidebar { it.copy(enabledInApp = enabled) }
+                        onUpdateCrosshair { it.copy(enabled = enabled) }
                     },
+                    modifier = Modifier.testTag("crosshair_master_switch"),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = ObsidianBlack,
-                        checkedTrackColor = CyberCyan
+                        checkedTrackColor = CrimsonRed
                     )
                 )
             }
 
-            Spacer(modifier = Modifier.height(10.dp))
-
-            // Side Edge Selector (Right vs Left)
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (sidebarConfig.isRightEdge) CyberCyan.copy(alpha = 0.2f) else ObsidianSurface)
-                        .border(
-                            1.dp,
-                            if (sidebarConfig.isRightEdge) CyberCyan else CarbonBorder,
-                            RoundedCornerShape(8.dp)
-                        )
-                        .clickable { onUpdateEdgeSidebar { it.copy(isRightEdge = true) } }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "مقبض السحب على اليمين",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (sidebarConfig.isRightEdge) CyberCyan else SilverMist,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                Box(
-                    modifier = Modifier
-                        .weight(1f)
-                        .clip(RoundedCornerShape(8.dp))
-                        .background(if (!sidebarConfig.isRightEdge) CyberCyan.copy(alpha = 0.2f) else ObsidianSurface)
-                        .border(
-                            1.dp,
-                            if (!sidebarConfig.isRightEdge) CyberCyan else CarbonBorder,
-                            RoundedCornerShape(8.dp)
-                        )
-                        .clickable { onUpdateEdgeSidebar { it.copy(isRightEdge = false) } }
-                        .padding(vertical = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        text = "مقبض السحب على اليسار",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (!sidebarConfig.isRightEdge) CyberCyan else SilverMist,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Button(
-                    onClick = onOpenInAppSidebarPreview,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("preview_edge_sidebar_btn"),
-                    shape = CutCornerShape(8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = CyberCyan,
-                        contentColor = ObsidianBlack
-                    )
-                ) {
-                    Text(
-                        text = "تجربة فتح الشريط الآن",
-                        style = MaterialTheme.typography.labelLarge,
-                        fontWeight = FontWeight.Bold
-                    )
-                }
-
-                OutlinedButton(
-                    onClick = onEnableSystemFloatingSidebar,
-                    modifier = Modifier
-                        .weight(1f)
-                        .testTag("system_overlay_sidebar_btn"),
-                    shape = CutCornerShape(8.dp),
-                    border = BorderStroke(
-                        1.dp,
-                        if (isSystemOverlayRunning) MatrixGreen else CrimsonRed
-                    )
-                ) {
-                    Icon(
-                        imageVector = if (canDrawSystemOverlays) Icons.Default.Layers else Icons.Default.OpenInNew,
-                        contentDescription = null,
-                        tint = if (isSystemOverlayRunning) MatrixGreen else CrimsonRed,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(4.dp))
-                    Text(
-                        text = when {
-                            isSystemOverlayRunning -> "نشط فوق التطبيقات ✓"
-                            canDrawSystemOverlays -> "تثبيت فوق الألعاب"
-                            else -> "إذن الظهور العائم"
-                        },
-                        style = MaterialTheme.typography.labelLarge,
-                        color = if (isSystemOverlayRunning) MatrixGreen else TitaniumWhite
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ScreenVisionFiltersCard(
-    activeFilter: ScreenVisionFilter,
-    onSelectFilter: (ScreenVisionFilter) -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = GunmetalCard,
-        border = BorderStroke(1.dp, MatrixGreen.copy(alpha = 0.5f))
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Visibility,
-                    contentDescription = null,
-                    tint = MatrixGreen,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "فلاتر الرؤية الليلية وكشف الأعداء (ROG Scout & Black Shark)",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TitaniumWhite,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "تفتيح الزوايا المظلمة والعشب وإبراز حركة الأعداء بوضوح عالٍ",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SilverMist
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                ScreenVisionFilter.entries.forEach { filter ->
-                    val selected = filter == activeFilter
-                    Surface(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { onSelectFilter(filter) }
-                            .testTag("vision_filter_${filter.id}"),
-                        shape = RoundedCornerShape(10.dp),
-                        color = if (selected) MatrixGreen.copy(alpha = 0.16f) else ObsidianSurface,
-                        border = BorderStroke(1.dp, if (selected) MatrixGreen else CarbonBorder)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 12.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(
-                                        text = filter.arabicName,
-                                        style = MaterialTheme.typography.bodyMedium,
-                                        color = TitaniumWhite,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Spacer(modifier = Modifier.width(6.dp))
-                                    Text(
-                                        text = filter.brandOrigin,
-                                        fontFamily = OrbitronFontFamily,
-                                        fontSize = 9.sp,
-                                        color = if (selected) MatrixGreen else CyberCyan
-                                    )
-                                }
-                                Text(
-                                    text = filter.description,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = SilverMist,
-                                    fontSize = 11.sp
-                                )
-                            }
-
-                            if (selected) {
-                                Box(
-                                    modifier = Modifier
-                                        .clip(RoundedCornerShape(4.dp))
-                                        .background(MatrixGreen)
-                                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                                ) {
-                                    Text(
-                                        text = "ON",
-                                        fontFamily = OrbitronFontFamily,
-                                        fontSize = 10.sp,
-                                        fontWeight = FontWeight.Bold,
-                                        color = ObsidianBlack
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun AudioRadarAndVoiceChangerCard(
-    activeAudioPreset: AudioRadarPreset,
-    activeVoicePreset: VoiceModPreset,
-    onSelectAudioRadar: (AudioRadarPreset) -> Unit,
-    onSelectVoiceMod: (VoiceModPreset) -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = GunmetalCard,
-        border = BorderStroke(1.dp, MoltenAmber.copy(alpha = 0.5f))
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.GraphicEq,
-                    contentDescription = null,
-                    tint = MoltenAmber,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "رادار تضخيم صوت الخطوات 3D ومُغيّر الصوت (POCO & RedMagic)",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TitaniumWhite,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "معالج صوتي حقيقي لتضخيم خطوات الأقدام والطلقات + فلاتر نبرة المايك",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SilverMist
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(10.dp))
-
-            Text(
-                text = "وضع تضخيم الصوت التكتيكي (Acoustic Footsteps Radar):",
-                style = MaterialTheme.typography.bodySmall,
-                color = SilverMist
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                AudioRadarPreset.entries.chunked(2).forEach { pair ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        pair.forEach { preset ->
-                            val selected = preset == activeAudioPreset
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(if (selected) MoltenAmber.copy(alpha = 0.2f) else ObsidianSurface)
-                                    .border(
-                                        1.dp,
-                                        if (selected) MoltenAmber else CarbonBorder,
-                                        RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable { onSelectAudioRadar(preset) }
-                                    .padding(10.dp)
-                            ) {
-                                Column {
-                                    Text(
-                                        text = preset.arabicName,
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = if (selected) MoltenAmber else TitaniumWhite,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    Text(
-                                        text = if (preset.boostDb > 0) "+${preset.boostDb} dB Boost" else "Standard",
-                                        fontFamily = OrbitronFontFamily,
-                                        fontSize = 9.sp,
-                                        color = SilverMist
-                                    )
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.Mic,
-                    contentDescription = null,
-                    tint = ElectricPurple,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(6.dp))
-                Text(
-                    text = "مُغيّر الصوت أثناء الدردشة (Voice Changer - اضغط للتجربة):",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TitaniumWhite,
-                    fontWeight = FontWeight.SemiBold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                VoiceModPreset.entries.forEach { voice ->
-                    val selected = voice == activeVoicePreset
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) ElectricPurple.copy(alpha = 0.25f) else ObsidianSurface)
-                            .border(
-                                1.dp,
-                                if (selected) ElectricPurple else CarbonBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable { onSelectVoiceMod(voice) }
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = voice.arabicName.substringBefore(" ("),
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (selected) ElectricPurple else SilverMist,
-                            fontSize = 10.sp,
-                            fontWeight = FontWeight.Bold,
-                            maxLines = 1
-                        )
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ProCrosshairStudioCard(
-    config: CrosshairConfig,
-    onUpdateCrosshair: ((CrosshairConfig) -> CrosshairConfig) -> Unit,
-    onOpenAccessibilityForOverlay: () -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = CutCornerShape(topStart = 16.dp, bottomEnd = 16.dp),
-        color = GunmetalCard,
-        border = BorderStroke(1.5.dp, config.colorOption.color.copy(alpha = 0.7f))
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier.weight(1f)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.GpsFixed,
-                        contentDescription = null,
-                        tint = config.colorOption.color,
-                        modifier = Modifier.size(24.dp)
-                    )
-                    Spacer(modifier = Modifier.width(10.dp))
-                    Column {
-                        Text(
-                            text = "مؤشر التصويب الاحترافي (Pro Crosshair)",
-                            style = MaterialTheme.typography.titleMedium,
-                            color = TitaniumWhite,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Text(
-                            text = "ثبّت إيم القناص في منتصف الشاشة بدقة ليزر للسلاح بدون سكوب",
-                            style = MaterialTheme.typography.bodySmall,
-                            color = SilverMist
-                        )
-                    }
-                }
-                Switch(
-                    checked = config.enabledInApp,
-                    onCheckedChange = { enabled ->
-                        onUpdateCrosshair { it.copy(enabledInApp = enabled) }
-                    },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = ObsidianBlack,
-                        checkedTrackColor = config.colorOption.color
-                    ),
-                    modifier = Modifier.testTag("arsenal_crosshair_switch")
-                )
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
+            // Live Crosshair Preview Box
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(130.dp)
+                    .height(120.dp)
                     .clip(RoundedCornerShape(12.dp))
                     .background(ObsidianBlack)
                     .border(1.dp, CarbonBorder, RoundedCornerShape(12.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                Canvas(modifier = Modifier.fillMaxSize()) {
-                    val cx = size.width / 2f
-                    val cy = size.height / 2f
-                    drawLine(CarbonBorder.copy(alpha = 0.45f), Offset(0f, cy), Offset(size.width, cy), 1f)
-                    drawLine(CarbonBorder.copy(alpha = 0.45f), Offset(cx, 0f), Offset(cx, size.height), 1f)
-                    drawCircle(
-                        color = CarbonBorder.copy(alpha = 0.45f),
-                        radius = 45.dp.toPx(),
-                        center = Offset(cx, cy),
-                        style = Stroke(width = 1.dp.toPx())
-                    )
-                }
-
                 CrosshairCanvasView(config = config)
 
-                Box(
+                Text(
+                    text = "${config.style.titleAr} • ${config.sizeDp.roundToInt()}dp",
+                    fontFamily = OrbitronFontFamily,
+                    fontSize = 10.sp,
+                    color = SilverMist,
                     modifier = Modifier
-                        .align(Alignment.TopStart)
+                        .align(Alignment.BottomEnd)
                         .padding(8.dp)
-                        .clip(RoundedCornerShape(4.dp))
-                        .background(ObsidianSurface.copy(alpha = 0.85f))
-                        .padding(horizontal = 6.dp, vertical = 2.dp)
-                ) {
-                    Text(
-                        text = config.style.arabicName,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = config.colorOption.color,
-                        fontSize = 11.sp
-                    )
-                }
+                )
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = "اختر شكل المؤشر (8 أشكال ريد ماجيك):",
-                style = MaterialTheme.typography.bodySmall,
-                color = SilverMist
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            val styles = CrosshairStyle.entries
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                styles.chunked(2).forEach { pair ->
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+            // Crosshair Style Selector
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                CrosshairStyle.entries.forEach { style ->
+                    val selected = config.style == style
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) CrimsonRed.copy(alpha = 0.2f) else ObsidianSurface)
+                            .border(
+                                1.dp,
+                                if (selected) CrimsonRed else CarbonBorder,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable { onUpdateCrosshair { it.copy(style = style) } }
+                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                        contentAlignment = Alignment.Center
                     ) {
-                        pair.forEach { style ->
-                            val isSelected = config.style == style
-                            Box(
-                                modifier = Modifier
-                                    .weight(1f)
-                                    .clip(RoundedCornerShape(8.dp))
-                                    .background(
-                                        if (isSelected) config.colorOption.color.copy(alpha = 0.2f)
-                                        else ObsidianSurface
-                                    )
-                                    .border(
-                                        1.dp,
-                                        if (isSelected) config.colorOption.color else CarbonBorder,
-                                        RoundedCornerShape(8.dp)
-                                    )
-                                    .clickable {
-                                        onUpdateCrosshair { it.copy(style = style) }
-                                    }
-                                    .padding(horizontal = 10.dp, vertical = 8.dp)
-                                    .testTag("crosshair_style_${style.id}")
-                            ) {
-                                Text(
-                                    text = style.arabicName,
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = if (isSelected) TitaniumWhite else SilverMist,
-                                    fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
-                                    maxLines = 1
-                                )
-                            }
-                        }
+                        Text(
+                            text = style.titleAr,
+                            style = MaterialTheme.typography.labelSmall,
+                            color = if (selected) TitaniumWhite else SilverMist,
+                            fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal,
+                            fontSize = 10.sp
+                        )
                     }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = "لون الليزر:",
-                style = MaterialTheme.typography.bodySmall,
-                color = SilverMist
-            )
-            Spacer(modifier = Modifier.height(6.dp))
+            // Color Selector Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
-                CrosshairColorOption.entries.forEach { colorOpt ->
-                    val selected = config.colorOption == colorOpt
-                    Box(
-                        modifier = Modifier
-                            .size(38.dp)
-                            .clip(CircleShape)
-                            .background(colorOpt.color)
-                            .border(
-                                width = if (selected) 3.dp else 1.dp,
-                                color = if (selected) TitaniumWhite else ObsidianBlack,
-                                shape = CircleShape
-                            )
-                            .clickable {
-                                onUpdateCrosshair { it.copy(colorOption = colorOpt) }
-                            }
-                    )
+                Text(
+                    text = "لون المؤشر:",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = SilverMist
+                )
+                Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                    colorOptions.forEach { (hex, name) ->
+                        val selected = config.colorHex == hex
+                        Box(
+                            modifier = Modifier
+                                .size(28.dp)
+                                .clip(CircleShape)
+                                .background(Color(hex))
+                                .border(
+                                    width = if (selected) 2.5.dp else 1.dp,
+                                    color = if (selected) TitaniumWhite else CarbonBorder,
+                                    shape = CircleShape
+                                )
+                                .clickable { onUpdateCrosshair { it.copy(colorHex = hex) } }
+                        )
+                    }
                 }
             }
 
-            Spacer(modifier = Modifier.height(12.dp))
-
+            // Size & Opacity Sliders
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "حجم المؤشر:",
+                    text = "حجم المؤشر وشفافيته:",
                     style = MaterialTheme.typography.bodySmall,
                     color = SilverMist
                 )
                 Text(
-                    text = "${config.sizeDp.roundToInt()} DP",
+                    text = "${config.sizeDp.roundToInt()} DP • ${(config.opacity * 100).roundToInt()}%",
                     fontFamily = OrbitronFontFamily,
                     fontSize = 11.sp,
-                    color = config.colorOption.color
+                    color = CrimsonRed,
+                    fontWeight = FontWeight.Bold
                 )
             }
             Slider(
                 value = config.sizeDp,
                 onValueChange = { sz -> onUpdateCrosshair { it.copy(sizeDp = sz) } },
-                valueRange = 18f..64f,
+                valueRange = 16f..56f,
                 colors = SliderDefaults.colors(
-                    thumbColor = config.colorOption.color,
-                    activeTrackColor = config.colorOption.color
+                    thumbColor = CrimsonRed,
+                    activeTrackColor = CrimsonRed
                 )
             )
 
+            // Reset Offset Button
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "إزاحة المركز: X=${config.offsetXDp.roundToInt()}dp, Y=${config.offsetYDp.roundToInt()}dp",
+                    fontFamily = OrbitronFontFamily,
+                    fontSize = 10.sp,
+                    color = SilverMist
+                )
+                OutlinedButton(
+                    onClick = {
+                        onUpdateCrosshair { it.copy(offsetXDp = 0f, offsetYDp = 0f) }
+                    },
+                    contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, CarbonBorder)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Refresh,
+                        contentDescription = null,
+                        tint = CyberCyan,
+                        modifier = Modifier.size(14.dp)
+                    )
+                    Spacer(modifier = Modifier.width(4.dp))
+                    Text(
+                        text = "توسيط",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = CyberCyan
+                    )
+                }
+            }
+
+            if (!canDrawOverlays) {
+                OutlinedButton(
+                    onClick = onOpenOverlayPermissionSettings,
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, MoltenAmber)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Layers,
+                        contentDescription = null,
+                        tint = MoltenAmber,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "منح إذن الظهور فوق التطبيقات لعرض المؤشر داخل الألعاب",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MoltenAmber,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun GfxAndTouchTunerCard(
+    gfxResolution: GfxResolutionPreset,
+    touchSamplingRate: TouchSamplingRate,
+    lowEndConfig: LowEndDeviceConfig,
+    fpsPillVisible: Boolean,
+    isSystemFloatingBarRunning: Boolean,
+    onSelectResolution: (GfxResolutionPreset) -> Unit,
+    onSelectTouchRate: (TouchSamplingRate) -> Unit,
+    onUpdateLowEnd: ((LowEndDeviceConfig) -> LowEndDeviceConfig) -> Unit,
+    onToggleFpsPill: (Boolean) -> Unit,
+    onLaunchSystemFloatingSidebar: () -> Unit
+) {
+    Surface(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag("gfx_and_touch_tuner_card"),
+        shape = RoundedCornerShape(14.dp),
+        color = GunmetalCard,
+        border = BorderStroke(1.dp, CyberCyan.copy(alpha = 0.6f))
+    ) {
+        Column(
+            modifier = Modifier.padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(
+                    imageVector = Icons.Default.Tune,
+                    contentDescription = null,
+                    tint = CyberCyan,
+                    modifier = Modifier.size(22.dp)
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                Column {
+                    Text(
+                        text = "مُحسّن الرسوميات واستجابة اللمس (GFX & Touch Engine)",
+                        style = MaterialTheme.typography.titleSmall,
+                        color = TitaniumWhite,
+                        fontWeight = FontWeight.Bold
+                    )
+                    Text(
+                        text = "تخصيص دقة الرندر وسرعة استجابة اللمس وتخفيف الحمل للأجهزة الضعيفة",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = SilverMist,
+                        fontSize = 11.sp
+                    )
+                }
+            }
+
+            // Resolution Presets
+            Text(
+                text = "دقة الرندر الموصى بها:",
+                style = MaterialTheme.typography.bodySmall,
+                color = SilverMist
+            )
+            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                GfxResolutionPreset.entries.forEach { preset ->
+                    val selected = preset == gfxResolution
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) CyberCyan.copy(alpha = 0.16f) else ObsidianSurface)
+                            .border(
+                                1.dp,
+                                if (selected) CyberCyan else CarbonBorder,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable { onSelectResolution(preset) }
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Column {
+                            Text(
+                                text = preset.label,
+                                fontFamily = OrbitronFontFamily,
+                                fontSize = 11.sp,
+                                color = TitaniumWhite,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${preset.scaleText} (توفير GPU: ${preset.gpuLoadReductionPercent}%)",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SilverMist,
+                                fontSize = 10.sp
+                            )
+                        }
+                        if (selected) {
+                            Icon(
+                                imageVector = Icons.Default.CheckCircle,
+                                contentDescription = null,
+                                tint = CyberCyan,
+                                modifier = Modifier.size(18.dp)
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Touch Sampling Rate
+            Text(
+                text = "معدل استجابة اللمس (Touch Sampling):",
+                style = MaterialTheme.typography.bodySmall,
+                color = SilverMist
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                TouchSamplingRate.entries.forEach { rate ->
+                    val selected = rate == touchSamplingRate
+                    Box(
+                        modifier = Modifier
+                            .weight(1f)
+                            .clip(RoundedCornerShape(8.dp))
+                            .background(if (selected) MatrixGreen.copy(alpha = 0.18f) else ObsidianSurface)
+                            .border(
+                                1.dp,
+                                if (selected) MatrixGreen else CarbonBorder,
+                                RoundedCornerShape(8.dp)
+                            )
+                            .clickable { onSelectTouchRate(rate) }
+                            .padding(vertical = 8.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                            Icon(
+                                imageVector = Icons.Default.TouchApp,
+                                contentDescription = null,
+                                tint = if (selected) MatrixGreen else SilverMist,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Text(
+                                text = "${rate.hz}Hz",
+                                fontFamily = OrbitronFontFamily,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = if (selected) MatrixGreen else TitaniumWhite
+                            )
+                            Text(
+                                text = "${rate.responseMs}ms",
+                                fontFamily = OrbitronFontFamily,
+                                fontSize = 9.sp,
+                                color = SilverMist
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Low-End Boost Switch
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -890,330 +599,96 @@ private fun ProCrosshairStudioCard(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Column(modifier = Modifier.weight(1f)) {
-                    Text(
-                        text = "إظهار المؤشر عائماً فوق الألعاب الخارجية",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = TitaniumWhite,
-                        fontWeight = FontWeight.SemiBold
+                Row(
+                    modifier = Modifier.weight(1f),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Memory,
+                        contentDescription = null,
+                        tint = MoltenAmber,
+                        modifier = Modifier.size(20.dp)
                     )
-                    Text(
-                        text = "يعرض مؤشر التصويب في منتصف الشاشة فوق ببجي وفري فاير وكود",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SilverMist
-                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Column {
+                        Text(
+                            text = "تسريع الأجهزة الضعيفة والمتوسطة (Low-End Stabilizer)",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = TitaniumWhite,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "تخفيف المؤثرات الثقيلة وتثبيت الفريمات لمنع التقطيع المفاجئ",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SilverMist,
+                            fontSize = 10.sp
+                        )
+                    }
                 }
                 Switch(
-                    checked = config.systemOverlayEnabled,
-                    onCheckedChange = { enabled ->
-                        onUpdateCrosshair { it.copy(systemOverlayEnabled = enabled) }
-                        if (enabled) {
-                            onOpenAccessibilityForOverlay()
-                        }
+                    checked = lowEndConfig.lowEndBoostEnabled,
+                    onCheckedChange = { v ->
+                        onUpdateLowEnd { it.copy(lowEndBoostEnabled = v, disableHeavyShaders = v) }
                     },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = ObsidianBlack,
-                        checkedTrackColor = CrimsonRed
+                        checkedTrackColor = MoltenAmber
                     )
                 )
             }
-        }
-    }
-}
 
-@Composable
-private fun LowEndResolutionAndTouchCard(
-    lowEndConfig: LowEndOptimizerConfig,
-    onUpdateLowEnd: ((LowEndOptimizerConfig) -> LowEndOptimizerConfig) -> Unit
-) {
-    val resPresets = listOf(
-        "540p Ultra FPS (أقصى فريمات للأجهزة الضعيفة جداً)",
-        "720p Esports (موصى به للأجهزة الضعيفة)",
-        "900p Sharp HD (توازن الدقة والسرعة)",
-        "1080p Native FHD (الدقة الكاملة)"
-    )
-
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = GunmetalCard,
-        border = BorderStroke(1.dp, CyberCyan.copy(alpha = 0.45f))
-    ) {
-        Column(modifier = Modifier.padding(14.dp)) {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(
-                    imageVector = Icons.Default.DisplaySettings,
-                    contentDescription = null,
-                    tint = CyberCyan,
-                    modifier = Modifier.size(22.dp)
-                )
-                Spacer(modifier = Modifier.width(8.dp))
-                Column {
-                    Text(
-                        text = "مُحسّن الجرافيك واللمس للأجهزة الضعيفة (GFX & Touch)",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = TitaniumWhite,
-                        fontWeight = FontWeight.Bold
-                    )
-                    Text(
-                        text = "تقليل عبء المعالج الرسومي GPU ورفع استجابة اللمس الفورية",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = SilverMist
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(12.dp))
-
-            Text(
-                text = "ملف تحجيم الدقة والفريمات (Resolution & Frame Target):",
-                style = MaterialTheme.typography.bodySmall,
-                color = SilverMist
-            )
-            Spacer(modifier = Modifier.height(6.dp))
-
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                resPresets.forEach { preset ->
-                    val selected = lowEndConfig.resolutionScalePreset == preset
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) CyberCyan.copy(alpha = 0.18f) else ObsidianSurface)
-                            .border(
-                                1.dp,
-                                if (selected) CyberCyan else CarbonBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable {
-                                onUpdateLowEnd { it.copy(resolutionScalePreset = preset) }
-                            }
-                            .padding(horizontal = 12.dp, vertical = 9.dp)
-                    ) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Text(
-                                text = preset,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (selected) TitaniumWhite else SilverMist,
-                                fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal
-                            )
-                            if (selected) {
-                                Text(
-                                    text = "ACTIVE",
-                                    fontFamily = OrbitronFontFamily,
-                                    fontSize = 10.sp,
-                                    color = CyberCyan,
-                                    fontWeight = FontWeight.Bold
-                                )
-                            }
-                        }
-                    }
-                }
-            }
-
-            Spacer(modifier = Modifier.height(14.dp))
-
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                Row(verticalAlignment = Alignment.CenterVertically) {
-                    Icon(
-                        imageVector = Icons.Default.TouchApp,
-                        contentDescription = null,
-                        tint = MoltenAmber,
-                        modifier = Modifier.size(18.dp)
-                    )
-                    Spacer(modifier = Modifier.width(6.dp))
-                    Text(
-                        text = "معدل استجابة اللمس (Touch Sampling):",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = TitaniumWhite,
-                        fontWeight = FontWeight.SemiBold
-                    )
-                }
-                Text(
-                    text = "${lowEndConfig.touchSamplingRateHz}Hz",
-                    fontFamily = OrbitronFontFamily,
-                    fontSize = 12.sp,
-                    color = MoltenAmber,
-                    fontWeight = FontWeight.Bold
-                )
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
+            // Floating Sidebar + FPS Counter Quick Launch Row
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                listOf(240, 360, 480, 960).forEach { hz ->
-                    val selected = lowEndConfig.touchSamplingRateHz == hz
-                    Box(
-                        modifier = Modifier
-                            .weight(1f)
-                            .clip(RoundedCornerShape(8.dp))
-                            .background(if (selected) MoltenAmber.copy(alpha = 0.22f) else ObsidianSurface)
-                            .border(
-                                1.dp,
-                                if (selected) MoltenAmber else CarbonBorder,
-                                RoundedCornerShape(8.dp)
-                            )
-                            .clickable {
-                                onUpdateLowEnd { it.copy(touchSamplingRateHz = hz) }
-                            }
-                            .padding(vertical = 8.dp),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Text(
-                            text = "${hz}Hz",
-                            fontFamily = OrbitronFontFamily,
-                            fontSize = 11.sp,
-                            fontWeight = FontWeight.Bold,
-                            color = if (selected) MoltenAmber else SilverMist
-                        )
-                    }
+                Button(
+                    onClick = onLaunchSystemFloatingSidebar,
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = CutCornerShape(8.dp),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = if (isSystemFloatingBarRunning) MatrixGreen else CyberCyan,
+                        contentColor = ObsidianBlack
+                    )
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Layers,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (isSystemFloatingBarRunning) "الشريط الجانبي نشط" else "تفعيل الشريط الجانبي",
+                        style = MaterialTheme.typography.labelMedium,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = { onToggleFpsPill(!fpsPillVisible) },
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(42.dp),
+                    shape = CutCornerShape(8.dp),
+                    border = BorderStroke(1.dp, if (fpsPillVisible) MatrixGreen else CarbonBorder)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Speed,
+                        contentDescription = null,
+                        tint = if (fpsPillVisible) MatrixGreen else SilverMist,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = if (fpsPillVisible) "عداد FPS: نشط" else "إظهار عداد FPS",
+                        style = MaterialTheme.typography.labelMedium,
+                        color = if (fpsPillVisible) MatrixGreen else TitaniumWhite,
+                        fontWeight = FontWeight.Bold
+                    )
                 }
             }
         }
-    }
-}
-
-@Composable
-private fun GpuAndSystemTweaksCard(
-    lowEndConfig: LowEndOptimizerConfig,
-    onUpdateLowEnd: ((LowEndOptimizerConfig) -> LowEndOptimizerConfig) -> Unit
-) {
-    Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(14.dp),
-        color = GunmetalCard,
-        border = BorderStroke(1.dp, CarbonBorder)
-    ) {
-        Column(
-            modifier = Modifier.padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
-        ) {
-            Text(
-                text = "مميزات الجوالات الاحترافية (ROG / Samsung / Black Shark / POCO)",
-                style = MaterialTheme.typography.titleSmall,
-                color = TitaniumWhite,
-                fontWeight = FontWeight.Bold
-            )
-
-            SystemTweakRow(
-                icon = Icons.Default.DoNotTouch,
-                title = "منع اللمس الخاطئ للحواف والإيماءات (Mistouch Shield)",
-                subtitle = "يمنع خروج اللعبة بالخطأ عند لمس راحة اليد لأطراف الشاشة أثناء القتال",
-                checked = lowEndConfig.mistouchPrevention,
-                accent = ElectricPurple,
-                onCheckedChange = { v -> onUpdateLowEnd { it.copy(mistouchPrevention = v) } }
-            )
-
-            SystemTweakRow(
-                icon = Icons.Default.BatterySaver,
-                title = "الحماية الحرارية أثناء الشحن (Bypass Thermal Guard)",
-                subtitle = "يقلل الحرارة الناتجة عن الشحن أثناء اللعب لحماية البطارية والمعالج من الهبوط",
-                checked = lowEndConfig.bypassChargingGuard,
-                accent = MatrixGreen,
-                onCheckedChange = { v -> onUpdateLowEnd { it.copy(bypassChargingGuard = v) } }
-            )
-
-            SystemTweakRow(
-                icon = Icons.Default.Speed,
-                title = "تعطيل تنعيم الحواف الثقيل (Disable 4x MSAA)",
-                subtitle = "يرفع الفريمات بنسبة تصل إلى 25% في الأجهزة الضعيفة والمتوسطة",
-                checked = lowEndConfig.gpuForce4xMsaaOff,
-                accent = MatrixGreen,
-                onCheckedChange = { v -> onUpdateLowEnd { it.copy(gpuForce4xMsaaOff = v) } }
-            )
-
-            SystemTweakRow(
-                icon = Icons.Default.DisplaySettings,
-                title = "تخفيف الظلال والضباب الدخاني (Shadow Downscale)",
-                subtitle = "يمنع هبوط الفريمات المفاجئ (Frame Drop) أثناء المواجهات القريبة",
-                checked = lowEndConfig.shadowDownscale,
-                accent = CyberCyan,
-                onCheckedChange = { v -> onUpdateLowEnd { it.copy(shadowDownscale = v) } }
-            )
-
-            SystemTweakRow(
-                icon = Icons.Default.WifiTethering,
-                title = "أولوية قصوى لحزم الشبكة (Zero-Lag Network Socket)",
-                subtitle = "يمنع تحديثات الخلفية من سحب الإنترنت أثناء اللعب لتثبيت البينج",
-                checked = lowEndConfig.zeroLagNetworkMode,
-                accent = MoltenAmber,
-                onCheckedChange = { v -> onUpdateLowEnd { it.copy(zeroLagNetworkMode = v) } }
-            )
-
-            SystemTweakRow(
-                icon = Icons.Default.NotificationsOff,
-                title = "حظر الإشعارات والمكالمات المزعجة (DND Gaming Shield)",
-                subtitle = "يمنع ظهور الإشعارات العلوية التي تغطي أزرار اللعب",
-                checked = lowEndConfig.blockHeadsUpNotifications,
-                accent = CrimsonRed,
-                onCheckedChange = { v -> onUpdateLowEnd { it.copy(blockHeadsUpNotifications = v) } }
-            )
-        }
-    }
-}
-
-@Composable
-private fun SystemTweakRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    subtitle: String,
-    checked: Boolean,
-    accent: Color,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clip(RoundedCornerShape(10.dp))
-            .background(ObsidianSurface)
-            .padding(10.dp),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier.weight(1f)
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = accent,
-                modifier = Modifier.size(20.dp)
-            )
-            Spacer(modifier = Modifier.width(10.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = TitaniumWhite,
-                    fontWeight = FontWeight.SemiBold
-                )
-                Text(
-                    text = subtitle,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SilverMist,
-                    fontSize = 11.sp
-                )
-            }
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = ObsidianBlack,
-                checkedTrackColor = accent
-            )
-        )
     }
 }

@@ -3,8 +3,6 @@ package com.example.ui.components
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -33,28 +31,25 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AcUnit
-import androidx.compose.material.icons.filled.BatterySaver
 import androidx.compose.material.icons.filled.Bolt
+import androidx.compose.material.icons.filled.BrightnessHigh
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ControlCamera
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.DoNotTouch
-import androidx.compose.material.icons.filled.GraphicEq
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.LockOpen
-import androidx.compose.material.icons.filled.Mic
+import androidx.compose.material.icons.filled.NotificationsOff
 import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.RecordVoiceOver
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material.icons.filled.Timer
-import androidx.compose.material.icons.filled.Visibility
-import androidx.compose.material.icons.filled.VolumeUp
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Icon
@@ -81,21 +76,16 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
-import com.example.model.AudioRadarPreset
 import com.example.model.ClonedButtonsConfig
 import com.example.model.CrosshairConfig
-import com.example.model.EdgeSidebarConfig
 import com.example.model.HardwareTelemetry
-import com.example.model.LowEndOptimizerConfig
+import com.example.model.LowEndDeviceConfig
 import com.example.model.PerformanceMode
-import com.example.model.ScreenVisionFilter
-import com.example.model.ShoulderTriggerConfig
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.CyberCyan
 import com.example.ui.theme.ElectricPurple
 import com.example.ui.theme.GunmetalCard
-import com.example.ui.theme.GunmetalElevated
 import com.example.ui.theme.MatrixGreen
 import com.example.ui.theme.MoltenAmber
 import com.example.ui.theme.ObsidianBlack
@@ -107,40 +97,41 @@ import kotlin.math.abs
 import kotlin.math.roundToInt
 import kotlinx.coroutines.delay
 
+/**
+ * In-App Game Genie / Gaming Mode Side Dock Overlay.
+ * Clean, lightweight, and responsive in-game control dock.
+ */
 @Composable
 fun EdgeSwipeGameGenieOverlay(
-    sidebarConfig: EdgeSidebarConfig,
+    sidebarEnabledInApp: Boolean,
     isPanelExpanded: Boolean,
     onSetPanelExpanded: (Boolean) -> Unit,
     telemetry: HardwareTelemetry,
     performanceMode: PerformanceMode,
-    triggerConfig: ShoulderTriggerConfig,
     crosshairConfig: CrosshairConfig,
-    lowEndConfig: LowEndOptimizerConfig,
+    lowEndConfig: LowEndDeviceConfig,
+    clonedButtonsConfig: ClonedButtonsConfig,
+    fpsPillVisible: Boolean,
+    notificationShieldActive: Boolean,
     canDrawSystemOverlays: Boolean,
     isSystemOverlayRunning: Boolean,
     onRunInstantBoost: () -> Unit,
     onSelectPerformanceMode: (PerformanceMode) -> Unit,
-    onToggleTriggers: () -> Unit,
     onToggleCrosshair: () -> Unit,
-    onCycleVisionFilter: () -> Unit,
-    onCycleAudioRadar: () -> Unit,
+    onToggleFpsPill: () -> Unit,
+    onToggleNotificationShield: () -> Unit,
     onToggleMistouch: () -> Unit,
-    onToggleAfkBlackScreen: (Boolean) -> Unit,
-    onSwapSidebarEdge: () -> Unit,
+    onToggleBrightnessLock: () -> Unit,
+    onToggleClonedButtonsOverlay: () -> Unit,
+    onToggleClonedButtonsLock: () -> Unit,
     onActivateSystemFloatingBar: () -> Unit,
     onRunCoolDown: () -> Unit = {},
-    clonedButtonsConfig: ClonedButtonsConfig = ClonedButtonsConfig(),
-    onToggleClonedButtonsOverlay: () -> Unit = {},
-    onToggleClonedButtonsLock: () -> Unit = {},
-    isLiveMicActive: Boolean = false,
-    onCycleVoiceMod: () -> Unit = {},
-    onToggleLiveMic: () -> Unit = {},
     onShutdownAndExitApp: () -> Unit = {}
 ) {
     var handleOffsetY by remember { mutableFloatStateOf(0f) }
+    var isRightEdge by remember { mutableStateOf(true) }
 
-    // Tactical Stopwatch state inside the Game Genie sidebar (for timing Boss respawns / Airdrops)
+    // Tactical Stopwatch state inside the Game Genie sidebar
     var timerRunning by remember { mutableStateOf(false) }
     var timerSeconds by remember { mutableIntStateOf(0) }
 
@@ -151,17 +142,8 @@ fun EdgeSwipeGameGenieOverlay(
         }
     }
 
-    // 1. Vision Filter Screen Tint Overlay (Night Hunter / HDR Vivid / Predator / Eye Care)
-    if (lowEndConfig.visionFilter != ScreenVisionFilter.NONE) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(lowEndConfig.visionFilter.overlayColor)
-        )
-    }
-
-    // 2. Center Floating Crosshair Preview when enabled in-app
-    if (crosshairConfig.enabledInApp) {
+    // 1. Center Floating Crosshair Preview when enabled in-app
+    if (crosshairConfig.enabled && !isSystemOverlayRunning) {
         Box(
             modifier = Modifier.fillMaxSize(),
             contentAlignment = Alignment.Center
@@ -170,46 +152,14 @@ fun EdgeSwipeGameGenieOverlay(
         }
     }
 
-    // 2b. In-App Floating Magnifier Tactical Scope Reticle when enabled
-    if (lowEndConfig.magnifierEnabled && !isSystemOverlayRunning) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(116.dp)
-                    .clip(CircleShape)
-                    .background(CyberCyan.copy(alpha = 0.08f))
-                    .border(2.dp, CyberCyan.copy(alpha = 0.85f), CircleShape),
-                contentAlignment = Alignment.TopCenter
-            ) {
-                Text(
-                    text = "${(lowEndConfig.magnifierZoom * 10).roundToInt() / 10f}x SCOPE",
-                    fontFamily = OrbitronFontFamily,
-                    fontSize = 9.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = CyberCyan,
-                    modifier = Modifier.padding(top = 6.dp)
-                )
-            }
-        }
-    }
-
-    // 2c. In-App Floating HUD Pill (FPS / Temp / RAM) when enabled
-    val showAnyHud = lowEndConfig.fpsOverlayEnabled || lowEndConfig.tempOverlayEnabled || lowEndConfig.ramOverlayEnabled
-    if (showAnyHud && !isSystemOverlayRunning) {
+    // 2. In-App Floating HUD Pill (FPS / Temp / RAM) when enabled
+    if (fpsPillVisible && !isSystemOverlayRunning) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
                 .padding(top = 56.dp, start = 16.dp),
             contentAlignment = Alignment.TopStart
         ) {
-            val metrics = buildList {
-                if (lowEndConfig.fpsOverlayEnabled) add("${telemetry.liveFps} FPS")
-                if (lowEndConfig.tempOverlayEnabled) add("${telemetry.batteryTempCelsius}°C")
-                if (lowEndConfig.ramOverlayEnabled) add("RAM ${telemetry.ramUsagePercent}%")
-            }
             Surface(
                 shape = RoundedCornerShape(16.dp),
                 color = ObsidianSurface.copy(alpha = 0.88f),
@@ -217,7 +167,7 @@ fun EdgeSwipeGameGenieOverlay(
                 modifier = Modifier.testTag("in_app_hud_overlay_pill")
             ) {
                 Text(
-                    text = metrics.joinToString("  •  "),
+                    text = "${telemetry.liveFps} FPS  •  ${telemetry.batteryTempCelsius.roundToInt()}°C  •  RAM ${telemetry.ramUsagePercent}%",
                     fontFamily = OrbitronFontFamily,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
@@ -229,17 +179,17 @@ fun EdgeSwipeGameGenieOverlay(
     }
 
     // 3. Collapsed Glowing Side-Edge Swipe Handle
-    if (sidebarConfig.enabledInApp && !isPanelExpanded && !lowEndConfig.afkBlackScreenSaver) {
+    if (sidebarEnabledInApp && !isPanelExpanded) {
         Box(
             modifier = Modifier.fillMaxSize(),
-            contentAlignment = if (sidebarConfig.isRightEdge) Alignment.CenterStart else Alignment.CenterEnd
+            contentAlignment = if (isRightEdge) Alignment.CenterStart else Alignment.CenterEnd
         ) {
             Surface(
                 modifier = Modifier
                     .offset { IntOffset(0, handleOffsetY.roundToInt()) }
                     .width(28.dp)
                     .height(118.dp)
-                    .pointerInput(sidebarConfig.isRightEdge) {
+                    .pointerInput(isRightEdge) {
                         detectHorizontalDragGestures { change, dragAmount ->
                             change.consume()
                             if (abs(dragAmount) > 6f) {
@@ -255,12 +205,12 @@ fun EdgeSwipeGameGenieOverlay(
                     }
                     .clickable { onSetPanelExpanded(true) }
                     .testTag("edge_swipe_handle"),
-                shape = if (sidebarConfig.isRightEdge) {
+                shape = if (isRightEdge) {
                     RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp)
                 } else {
                     RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)
                 },
-                color = ObsidianSurface.copy(alpha = sidebarConfig.handleOpacity),
+                color = ObsidianSurface.copy(alpha = 0.88f),
                 border = BorderStroke(1.5.dp, CrimsonRed)
             ) {
                 Column(
@@ -279,28 +229,26 @@ fun EdgeSwipeGameGenieOverlay(
                     )
 
                     Icon(
-                        imageVector = if (sidebarConfig.isRightEdge) Icons.Default.ChevronLeft else Icons.Default.ChevronRight,
+                        imageVector = if (isRightEdge) Icons.Default.ChevronLeft else Icons.Default.ChevronRight,
                         contentDescription = "فتح الشريط الجانبي العائم",
                         tint = TitaniumWhite,
                         modifier = Modifier.size(18.dp)
                     )
 
-                    if (sidebarConfig.showFpsBadgeOnHandle) {
-                        Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                            Text(
-                                text = "${telemetry.liveFps}",
-                                fontFamily = OrbitronFontFamily,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 9.sp,
-                                color = MatrixGreen
-                            )
-                            Text(
-                                text = "FPS",
-                                fontFamily = OrbitronFontFamily,
-                                fontSize = 7.sp,
-                                color = SilverMist
-                            )
-                        }
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        Text(
+                            text = "${telemetry.liveFps}",
+                            fontFamily = OrbitronFontFamily,
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 9.sp,
+                            color = MatrixGreen
+                        )
+                        Text(
+                            text = "FPS",
+                            fontFamily = OrbitronFontFamily,
+                            fontSize = 7.sp,
+                            color = SilverMist
+                        )
                     }
                 }
             }
@@ -309,7 +257,7 @@ fun EdgeSwipeGameGenieOverlay(
 
     // 4. Expanded Floating Game Genie / Game Turbo Side Panel
     AnimatedVisibility(
-        visible = isPanelExpanded && !lowEndConfig.afkBlackScreenSaver,
+        visible = isPanelExpanded,
         enter = fadeIn(),
         exit = fadeOut()
     ) {
@@ -320,7 +268,7 @@ fun EdgeSwipeGameGenieOverlay(
                 .pointerInput(Unit) {
                     detectTapGestures(onTap = { onSetPanelExpanded(false) })
                 },
-            contentAlignment = if (sidebarConfig.isRightEdge) Alignment.CenterStart else Alignment.CenterEnd
+            contentAlignment = if (isRightEdge) Alignment.CenterStart else Alignment.CenterEnd
         ) {
             Surface(
                 modifier = Modifier
@@ -364,7 +312,7 @@ fun EdgeSwipeGameGenieOverlay(
                                     fontWeight = FontWeight.Bold
                                 )
                                 Text(
-                                    text = "HASSAN GAME TURBO DOCK",
+                                    text = "HASSAN GAMING SIDEBAR",
                                     fontFamily = OrbitronFontFamily,
                                     fontSize = 9.sp,
                                     color = CyberCyan
@@ -374,7 +322,7 @@ fun EdgeSwipeGameGenieOverlay(
 
                         Row {
                             IconButton(
-                                onClick = onSwapSidebarEdge,
+                                onClick = { isRightEdge = !isRightEdge },
                                 modifier = Modifier.size(30.dp)
                             ) {
                                 Icon(
@@ -410,7 +358,7 @@ fun EdgeSwipeGameGenieOverlay(
                     ) {
                         FloatingMetricItem("FPS", "${telemetry.liveFps}", MatrixGreen)
                         FloatingMetricItem("RAM", "${telemetry.ramUsagePercent}%", CyberCyan)
-                        FloatingMetricItem("TEMP", "${telemetry.batteryTempCelsius}°", MoltenAmber)
+                        FloatingMetricItem("TEMP", "${telemetry.batteryTempCelsius.roundToInt()}°", MoltenAmber)
                         FloatingMetricItem("PING", "${telemetry.pingMs}ms", MatrixGreen)
                     }
 
@@ -463,7 +411,7 @@ fun EdgeSwipeGameGenieOverlay(
                             )
                             Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "تبريد المعالج",
+                                text = "تبريد ذكي",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = CyberCyan,
                                 fontWeight = FontWeight.Bold
@@ -482,96 +430,45 @@ fun EdgeSwipeGameGenieOverlay(
                                 modifier = Modifier
                                     .weight(1f)
                                     .clip(RoundedCornerShape(6.dp))
-                                    .background(if (selected) mode.color.copy(alpha = 0.25f) else GunmetalCard)
-                                    .border(1.dp, if (selected) mode.color else CarbonBorder, RoundedCornerShape(6.dp))
+                                    .background(if (selected) mode.primaryColor.copy(alpha = 0.25f) else GunmetalCard)
+                                    .border(1.dp, if (selected) mode.primaryColor else CarbonBorder, RoundedCornerShape(6.dp))
                                     .clickable { onSelectPerformanceMode(mode) }
                                     .padding(vertical = 6.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
-                                    text = mode.englishBadge.replace(" MODE", ""),
+                                    text = mode.badgeText,
                                     fontFamily = OrbitronFontFamily,
                                     fontSize = 9.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (selected) mode.color else SilverMist
+                                    color = if (selected) mode.primaryColor else SilverMist
                                 )
                             }
                         }
                     }
 
-                    // Quick Tactical Grid Tools (2x3)
+                    // Quick Tactical Grid Tools (Clean Gaming Tools)
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             FloatingDockTile(
-                                icon = Icons.Default.VolumeUp,
-                                title = "أزرار L1/R1",
-                                status = if (triggerConfig.enabled) "مفعّل ON" else "متوقف",
-                                active = triggerConfig.enabled,
-                                accent = CyberCyan,
-                                onClick = onToggleTriggers,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FloatingDockTile(
                                 icon = Icons.Default.GpsFixed,
                                 title = "مؤشر التصويب",
-                                status = if (crosshairConfig.enabledInApp) crosshairConfig.style.id.take(6) else "متوقف",
-                                active = crosshairConfig.enabledInApp,
+                                status = if (crosshairConfig.enabled) "مفعّل ON" else "متوقف",
+                                active = crosshairConfig.enabled,
                                 accent = CrimsonRed,
                                 onClick = onToggleCrosshair,
                                 modifier = Modifier.weight(1f)
                             )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
                             FloatingDockTile(
-                                icon = Icons.Default.Visibility,
-                                title = "كاشف الظلام",
-                                status = lowEndConfig.visionFilter.arabicName.substringBefore(" "),
-                                active = lowEndConfig.visionFilter != ScreenVisionFilter.NONE,
+                                icon = Icons.Default.Speed,
+                                title = "عداد FPS العائم",
+                                status = if (fpsPillVisible) "مفعّل ON" else "متوقف",
+                                active = fpsPillVisible,
                                 accent = MatrixGreen,
-                                onClick = onCycleVisionFilter,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FloatingDockTile(
-                                icon = Icons.Default.GraphicEq,
-                                title = "رادار الخطوات",
-                                status = lowEndConfig.audioRadarPreset.arabicName.substringBefore(" "),
-                                active = lowEndConfig.audioRadarPreset != AudioRadarPreset.NORMAL,
-                                accent = MoltenAmber,
-                                onClick = onCycleAudioRadar,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FloatingDockTile(
-                                icon = Icons.Default.DoNotTouch,
-                                title = "منع اللمس الخاطئ",
-                                status = if (lowEndConfig.mistouchPrevention) "محمي" else "عادي",
-                                active = lowEndConfig.mistouchPrevention,
-                                accent = ElectricPurple,
-                                onClick = onToggleMistouch,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FloatingDockTile(
-                                icon = Icons.Default.BatterySaver,
-                                title = "الشاشة السوداء",
-                                status = "توفير طاقة AFK",
-                                active = lowEndConfig.afkBlackScreenSaver,
-                                accent = CyberCyan,
-                                onClick = {
-                                    onSetPanelExpanded(false)
-                                    onToggleAfkBlackScreen(true)
-                                },
+                                onClick = onToggleFpsPill,
                                 modifier = Modifier.weight(1f)
                             )
                         }
@@ -583,17 +480,17 @@ fun EdgeSwipeGameGenieOverlay(
                             FloatingDockTile(
                                 icon = Icons.Default.ControlCamera,
                                 title = "أزرار منسوخة",
-                                status = if (clonedButtonsConfig.systemOverlayEnabled) "عائمة ON" else "إظهار C1-C4",
-                                active = clonedButtonsConfig.systemOverlayEnabled,
+                                status = if (clonedButtonsConfig.enabled) "عائمة ON" else "إظهار C1-C4",
+                                active = clonedButtonsConfig.enabled,
                                 accent = CyberCyan,
                                 onClick = onToggleClonedButtonsOverlay,
                                 modifier = Modifier.weight(1f)
                             )
                             FloatingDockTile(
-                                icon = if (clonedButtonsConfig.isLockedForPlay) Icons.Default.Lock else Icons.Default.LockOpen,
+                                icon = if (clonedButtonsConfig.editPositionsLocked) Icons.Default.Lock else Icons.Default.LockOpen,
                                 title = "قفل المواقع",
-                                status = if (clonedButtonsConfig.isLockedForPlay) "مقفول للعب 🔒" else "وضع تحريك 🔓",
-                                active = clonedButtonsConfig.isLockedForPlay,
+                                status = if (clonedButtonsConfig.editPositionsLocked) "مقفول للعب 🔒" else "وضع تحريك 🔓",
+                                active = clonedButtonsConfig.editPositionsLocked,
                                 accent = MatrixGreen,
                                 onClick = onToggleClonedButtonsLock,
                                 modifier = Modifier.weight(1f)
@@ -605,22 +502,37 @@ fun EdgeSwipeGameGenieOverlay(
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             FloatingDockTile(
-                                icon = Icons.Default.RecordVoiceOver,
-                                title = "مغير الصوت",
-                                status = lowEndConfig.voiceModPreset.arabicName.substringBefore(" ("),
-                                active = true,
+                                icon = Icons.Default.NotificationsOff,
+                                title = "درع الإشعارات",
+                                status = if (notificationShieldActive) "صامت ON" else "عادي",
+                                active = notificationShieldActive,
                                 accent = ElectricPurple,
-                                onClick = onCycleVoiceMod,
+                                onClick = onToggleNotificationShield,
                                 modifier = Modifier.weight(1f)
                             )
                             FloatingDockTile(
-                                icon = Icons.Default.Mic,
-                                title = "مايك الألعاب",
-                                status = if (isLiveMicActive) "مباشر ON 🎙️" else "تشغيل المايك",
-                                active = isLiveMicActive,
-                                accent = MatrixGreen,
-                                onClick = onToggleLiveMic,
+                                icon = Icons.Default.DoNotTouch,
+                                title = "منع اللمس الخاطئ",
+                                status = if (lowEndConfig.touchEdgeRejectEnabled) "محمي" else "عادي",
+                                active = lowEndConfig.touchEdgeRejectEnabled,
+                                accent = MoltenAmber,
+                                onClick = onToggleMistouch,
                                 modifier = Modifier.weight(1f)
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            FloatingDockTile(
+                                icon = Icons.Default.BrightnessHigh,
+                                title = "تثبيت السطوع",
+                                status = if (lowEndConfig.brightnessLockEnabled) "${lowEndConfig.lockedBrightnessPercent}% ثابت" else "تلقائي",
+                                active = lowEndConfig.brightnessLockEnabled,
+                                accent = CyberCyan,
+                                onClick = onToggleBrightnessLock,
+                                modifier = Modifier.fillMaxWidth()
                             )
                         }
                     }
@@ -649,7 +561,7 @@ fun EdgeSwipeGameGenieOverlay(
                                 Spacer(modifier = Modifier.width(6.dp))
                                 Column {
                                     Text(
-                                        text = "مؤقت تكتيكي (Airdrop / Boss)",
+                                        text = "مؤقت تكتيكي داخل اللعب",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = TitaniumWhite,
                                         fontWeight = FontWeight.Bold
@@ -716,7 +628,7 @@ fun EdgeSwipeGameGenieOverlay(
                         Spacer(modifier = Modifier.width(6.dp))
                         Text(
                             text = when {
-                                isSystemOverlayRunning -> "✓ الشريط العائم نشط فوق جميع الألعاب الخارجية"
+                                isSystemOverlayRunning -> "✓ الشريط العائم نشط فوق الألعاب الخارجية"
                                 canDrawSystemOverlays -> "تشغيل الشريط العائم فوق جميع الألعاب الآن"
                                 else -> "منح إذن الظهور العائم فوق الألعاب (Settings)"
                             },
@@ -751,62 +663,6 @@ fun EdgeSwipeGameGenieOverlay(
                             fontWeight = FontWeight.ExtraBold
                         )
                     }
-                }
-            }
-        }
-    }
-
-    // 5. Black-Screen AFK Idle Mode (ROG / Samsung / Black Shark feature to save battery & cool phone while game runs)
-    AnimatedVisibility(
-        visible = lowEndConfig.afkBlackScreenSaver,
-        enter = fadeIn(),
-        exit = fadeOut()
-    ) {
-        Box(
-            modifier = Modifier
-                .fillMaxSize()
-                .background(Color.Black.copy(alpha = 0.96f))
-                .pointerInput(Unit) {
-                    detectTapGestures(
-                        onDoubleTap = { onToggleAfkBlackScreen(false) }
-                    )
-                }
-                .testTag("afk_black_screen_overlay"),
-            contentAlignment = Alignment.Center
-        ) {
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(24.dp)
-            ) {
-                Icon(
-                    imageVector = Icons.Default.BatterySaver,
-                    contentDescription = null,
-                    tint = CyberCyan.copy(alpha = 0.65f),
-                    modifier = Modifier.size(44.dp)
-                )
-                Spacer(modifier = Modifier.height(12.dp))
-                Text(
-                    text = "وضع الشاشة المظلمة النشط (AFK Cooling Mode)",
-                    style = MaterialTheme.typography.titleMedium,
-                    color = TitaniumWhite.copy(alpha = 0.75f),
-                    fontWeight = FontWeight.Bold
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = "اللعبة والتنظيف التلقائي يعملان بأقصى كفاءة مع توفير 80% من طاقة الشاشة وتبريد البطارية (${telemetry.batteryTempCelsius}°C)",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = SilverMist.copy(alpha = 0.6f)
-                )
-                Spacer(modifier = Modifier.height(18.dp))
-                OutlinedButton(
-                    onClick = { onToggleAfkBlackScreen(false) },
-                    border = BorderStroke(1.dp, CrimsonRed.copy(alpha = 0.7f))
-                ) {
-                    Text(
-                        text = "انقر مرتين على الشاشة أو اضغط هنا للعودة",
-                        style = MaterialTheme.typography.labelLarge,
-                        color = CrimsonRed
-                    )
                 }
             }
         }

@@ -1,12 +1,11 @@
 <resources>
     <string name="app_name">Hassan Games</string>
-    <string name="accessibility_service_label">أزرار الكتف Hassan Games L1/R1 (Volume Triggers)</string>
-    <string name="accessibility_service_description">يحوّل أزرار رفع وخفض الصوت (Volume Up / Down) إلى أزرار كتف للألعاب (L1 / R1) للضغط التلقائي السريع في المواقع المحددة على الشاشة مثل أجهزة ريد ماجيك.</string>
+    <string name="accessibility_service_label">محرك اللمس والألعاب Hassan Games</string>
+    <string name="accessibility_service_description">يدعم استنساخ الأزرار اللمسية على الشاشة (C1-C4) واكتشاف تشغيل الألعاب لتفعيل وضع الألعاب تلقائياً.</string>
+    <string name="tab_games">ألعابي My Games</string>
     <string name="tab_dashboard">مركز القيادة</string>
-    <string name="tab_triggers">أزرار الكتف L/R</string>
     <string name="tab_booster">مُقوّي الرام</string>
     <string name="tab_arsenal">ترسانة اللعب</string>
-    <string name="tab_games">منصة الألعاب</string>
     <string name="boost_now_button">تقوية خارقة الآن (SUPER BOOST)</string>
     <string name="diablo_mode_title">الوضع الشيطاني DIABLO</string>
 </resources>

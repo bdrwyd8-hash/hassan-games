@@ -263,9 +263,6 @@ class HardwareTelemetryEngine(private val context: Context) {
         val backgroundTrim = mode != SmartThermalMode.OFF &&
             (level == ThermalStateLevel.ELEVATED || level == ThermalStateLevel.HIGH_LOAD || telemetry.ramUsagePercent >= 82)
 
-        val throttleDsp = mode == SmartThermalMode.ECO_STABILITY ||
-            (mode == SmartThermalMode.AUTO_ADAPTIVE && level == ThermalStateLevel.HIGH_LOAD)
-
         val actions = mutableListOf<String>()
         if (mode == SmartThermalMode.OFF) {
             actions.add("المراقبة الذكية متوقفة — يعمل التطبيق بالإعدادات القياسية")
@@ -279,9 +276,6 @@ class HardwareTelemetryEngine(private val context: Context) {
             }
             if (telemetry.isCharging && temp >= 38.5f) {
                 actions.add("تنبيه الشحن أثناء اللعب: تم موازنة استهلاك الموارد لتقليل حرارة الشحن")
-            }
-            if (throttleDsp) {
-                actions.add("إيقاف مضخمات الصوت الثقيلة بالخلفية للحفاظ على استقرار الفريمات")
             }
         }
 
@@ -307,7 +301,6 @@ class HardwareTelemetryEngine(private val context: Context) {
             effectivePollIntervalMs = effectiveInterval,
             reduceAnimationsActive = reduceAnimations,
             backgroundTrimActive = backgroundTrim,
-            audioDspThrottled = throttleDsp,
             activeActionsAr = actions,
             summaryExplanationAr = summary
         )

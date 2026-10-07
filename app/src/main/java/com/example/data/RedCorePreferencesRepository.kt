@@ -1,496 +1,382 @@
 package com.example.data
 
 import android.content.Context
-import androidx.datastore.core.DataStore
-import androidx.datastore.preferences.core.Preferences
-import androidx.datastore.preferences.core.booleanPreferencesKey
-import androidx.datastore.preferences.core.edit
-import androidx.datastore.preferences.core.floatPreferencesKey
-import androidx.datastore.preferences.core.intPreferencesKey
-import androidx.datastore.preferences.core.stringPreferencesKey
-import androidx.datastore.preferences.core.stringSetPreferencesKey
-import androidx.datastore.preferences.preferencesDataStore
-import com.example.model.AudioRadarPreset
+import androidx.core.content.edit
 import com.example.model.AdvisorPresetMode
+import com.example.model.ClonedButtonMode
 import com.example.model.ClonedButtonsConfig
 import com.example.model.ClonedTouchButton
-import com.example.model.CrosshairColorOption
 import com.example.model.CrosshairConfig
 import com.example.model.CrosshairStyle
-import com.example.model.EdgeSidebarConfig
 import com.example.model.GameSpaceProfile
-import com.example.model.LowEndOptimizerConfig
+import com.example.model.GfxResolutionPreset
+import com.example.model.LowEndDeviceConfig
 import com.example.model.PerformanceMode
-import com.example.model.ScreenVisionFilter
-import com.example.model.ShoulderTriggerConfig
 import com.example.model.SmartThermalMode
-import com.example.model.TriggerFireMode
-import com.example.model.VoiceModPreset
-import com.example.model.defaultClonedTouchButtons
-import kotlinx.coroutines.flow.Flow
-import kotlinx.coroutines.flow.map
+import com.example.model.TouchSamplingRate
 
-private val Context.dataStore: DataStore<Preferences> by preferencesDataStore(name = "redcore_game_space_prefs")
+class RedCorePreferencesRepository(context: Context) {
 
-class RedCorePreferencesRepository(private val context: Context) {
+    private val prefs = context.getSharedPreferences("hassan_games_pro_prefs", Context.MODE_PRIVATE)
 
-    private object Keys {
-        val PERF_MODE = stringPreferencesKey("perf_mode")
-
-        // L1 / R1 Shoulder Triggers
-        val TRIGGERS_ENABLED = booleanPreferencesKey("triggers_enabled")
-        val L1_X = floatPreferencesKey("l1_x")
-        val L1_Y = floatPreferencesKey("l1_y")
-        val L1_MODE = stringPreferencesKey("l1_mode")
-        val L1_RPS = intPreferencesKey("l1_rps")
-        val R1_X = floatPreferencesKey("r1_x")
-        val R1_Y = floatPreferencesKey("r1_y")
-        val R1_MODE = stringPreferencesKey("r1_mode")
-        val R1_RPS = intPreferencesKey("r1_rps")
-        val TRIGGER_HAPTIC = booleanPreferencesKey("trigger_haptic")
-        val TRIGGER_SOUND = booleanPreferencesKey("trigger_sound")
-        val TRIGGER_COMBO = booleanPreferencesKey("trigger_combo")
-
-        // Crosshair
-        val CROSSHAIR_IN_APP = booleanPreferencesKey("crosshair_in_app")
-        val CROSSHAIR_SYSTEM = booleanPreferencesKey("crosshair_system")
-        val CROSSHAIR_STYLE = stringPreferencesKey("crosshair_style")
-        val CROSSHAIR_COLOR = stringPreferencesKey("crosshair_color")
-        val CROSSHAIR_SIZE = floatPreferencesKey("crosshair_size")
-        val CROSSHAIR_STROKE = floatPreferencesKey("crosshair_stroke")
-        val CROSSHAIR_OPACITY = floatPreferencesKey("crosshair_opacity")
-        val CROSSHAIR_OFFSET_X = floatPreferencesKey("crosshair_offset_x")
-        val CROSSHAIR_OFFSET_Y = floatPreferencesKey("crosshair_offset_y")
-
-        // Edge-Swipe Floating Sidebar
-        val SIDEBAR_IN_APP = booleanPreferencesKey("sidebar_in_app")
-        val SIDEBAR_SYSTEM = booleanPreferencesKey("sidebar_system")
-        val SIDEBAR_RIGHT_EDGE = booleanPreferencesKey("sidebar_right_edge")
-        val SIDEBAR_SHOW_FPS = booleanPreferencesKey("sidebar_show_fps")
-        val SIDEBAR_OPACITY = floatPreferencesKey("sidebar_opacity")
-
-        // Low-End Optimizer & Multi-Brand Features
-        val AUTO_CLEAN_BG = booleanPreferencesKey("auto_clean_bg")
-        val AUTO_CLEAN_INTERVAL = intPreferencesKey("auto_clean_interval")
-        val RAM_THRESHOLD = intPreferencesKey("ram_threshold")
-        val RES_PRESET = stringPreferencesKey("res_preset")
-        val TOUCH_HZ = intPreferencesKey("touch_hz")
-        val GPU_MSAA_OFF = booleanPreferencesKey("gpu_msaa_off")
-        val SHADOW_DOWNSCALE = booleanPreferencesKey("shadow_downscale")
-        val ZERO_LAG_NET = booleanPreferencesKey("zero_lag_net")
-        val BLOCK_NOTIFS = booleanPreferencesKey("block_notifs")
-        val LOCK_BRIGHTNESS = booleanPreferencesKey("lock_brightness")
-        val FAN_SPEED = intPreferencesKey("fan_speed")
-        val VISION_FILTER = stringPreferencesKey("vision_filter")
-        val AUDIO_RADAR = stringPreferencesKey("audio_radar")
-        val VOICE_MOD = stringPreferencesKey("voice_mod")
-        val MISTOUCH_PREV = booleanPreferencesKey("mistouch_prev")
-        val BYPASS_CHARGE = booleanPreferencesKey("bypass_charge")
-        val CUSTOM_BRIGHTNESS = intPreferencesKey("custom_brightness")
-        val GAME_MEDIA_VOL = intPreferencesKey("game_media_vol")
-        val DNS_PRESET = stringPreferencesKey("dns_preset")
-        val AUTO_RESTORE_EXIT = booleanPreferencesKey("auto_restore_exit")
-        val SMART_THERMAL_MODE = stringPreferencesKey("smart_thermal_mode")
-        val NOTIF_SHIELD_ENABLED = booleanPreferencesKey("notif_shield_enabled")
-        val FPS_OVERLAY_ENABLED = booleanPreferencesKey("fps_overlay_enabled")
-        val TEMP_OVERLAY_ENABLED = booleanPreferencesKey("temp_overlay_enabled")
-        val RAM_OVERLAY_ENABLED = booleanPreferencesKey("ram_overlay_enabled")
-        val MAGNIFIER_ENABLED = booleanPreferencesKey("magnifier_enabled")
-        val MAGNIFIER_ZOOM = floatPreferencesKey("magnifier_zoom")
-        val ADVISOR_MODE = stringPreferencesKey("advisor_mode")
-
-        // Cloned Touch Buttons
-        val CLONED_MASTER_ENABLED = booleanPreferencesKey("cloned_master_enabled")
-        val CLONED_SYSTEM_OVERLAY = booleanPreferencesKey("cloned_system_overlay")
-        val CLONED_LOCKED_PLAY = booleanPreferencesKey("cloned_locked_play")
-        val CLONED_BTN_SIZE = floatPreferencesKey("cloned_btn_size")
-        val CLONED_BTN_OPACITY = floatPreferencesKey("cloned_btn_opacity")
-        val CLONED_SERIALIZED = stringPreferencesKey("cloned_serialized")
-
-        // Per-Game Profiles & Active Session
-        val PER_GAME_PROFILES_SERIALIZED = stringPreferencesKey("per_game_profiles_serialized")
-        val LAST_ACTIVE_PROFILE_ID = stringPreferencesKey("last_active_profile_id")
-
-        // Whitelist
-        val WHITELISTED_PKGS = stringSetPreferencesKey("whitelisted_pkgs")
+    fun savePerformanceMode(mode: PerformanceMode) {
+        prefs.edit { putString(KEY_PERF_MODE, mode.name) }
     }
 
-    val performanceModeFlow: Flow<PerformanceMode> = context.dataStore.data.map { prefs ->
-        val raw = prefs[Keys.PERF_MODE] ?: PerformanceMode.BALANCE.id
-        PerformanceMode.entries.find { it.id == raw } ?: PerformanceMode.BALANCE
+    fun loadPerformanceMode(): PerformanceMode {
+        val raw = prefs.getString(KEY_PERF_MODE, PerformanceMode.PERFORMANCE.name)
+        return PerformanceMode.entries.firstOrNull { it.name == raw } ?: PerformanceMode.PERFORMANCE
     }
 
-    val triggerConfigFlow: Flow<ShoulderTriggerConfig> = context.dataStore.data.map { prefs ->
-        val l1ModeId = prefs[Keys.L1_MODE] ?: TriggerFireMode.SINGLE_TAP.id
-        val r1ModeId = prefs[Keys.R1_MODE] ?: TriggerFireMode.RAPID_BURST.id
-        ShoulderTriggerConfig(
-            enabled = prefs[Keys.TRIGGERS_ENABLED] ?: true,
-            l1XRatio = prefs[Keys.L1_X] ?: 0.24f,
-            l1YRatio = prefs[Keys.L1_Y] ?: 0.36f,
-            l1Mode = TriggerFireMode.entries.find { it.id == l1ModeId } ?: TriggerFireMode.SINGLE_TAP,
-            l1BurstRps = prefs[Keys.L1_RPS] ?: 10,
-            r1XRatio = prefs[Keys.R1_X] ?: 0.78f,
-            r1YRatio = prefs[Keys.R1_Y] ?: 0.56f,
-            r1Mode = TriggerFireMode.entries.find { it.id == r1ModeId } ?: TriggerFireMode.RAPID_BURST,
-            r1BurstRps = prefs[Keys.R1_RPS] ?: 14,
-            hapticFeedback = prefs[Keys.TRIGGER_HAPTIC] ?: true,
-            soundEffect = prefs[Keys.TRIGGER_SOUND] ?: false,
-            comboLinkLR = prefs[Keys.TRIGGER_COMBO] ?: false
-        )
+    fun saveAdvisorPresetMode(mode: AdvisorPresetMode) {
+        prefs.edit { putString(KEY_ADVISOR_PRESET_MODE, mode.name) }
     }
 
-    val crosshairConfigFlow: Flow<CrosshairConfig> = context.dataStore.data.map { prefs ->
-        val styleId = prefs[Keys.CROSSHAIR_STYLE] ?: CrosshairStyle.CIRCLE_DOT.id
-        val colorId = prefs[Keys.CROSSHAIR_COLOR] ?: CrosshairColorOption.CRIMSON.id
-        CrosshairConfig(
-            enabledInApp = prefs[Keys.CROSSHAIR_IN_APP] ?: true,
-            systemOverlayEnabled = prefs[Keys.CROSSHAIR_SYSTEM] ?: false,
-            style = CrosshairStyle.entries.find { it.id == styleId } ?: CrosshairStyle.CIRCLE_DOT,
-            colorOption = CrosshairColorOption.entries.find { it.id == colorId } ?: CrosshairColorOption.CRIMSON,
-            sizeDp = prefs[Keys.CROSSHAIR_SIZE] ?: 34f,
-            strokeWidthDp = prefs[Keys.CROSSHAIR_STROKE] ?: 2.2f,
-            opacity = prefs[Keys.CROSSHAIR_OPACITY] ?: 0.92f,
-            offsetX = prefs[Keys.CROSSHAIR_OFFSET_X] ?: 0f,
-            offsetY = prefs[Keys.CROSSHAIR_OFFSET_Y] ?: 0f
-        )
+    fun loadAdvisorPresetMode(): AdvisorPresetMode {
+        val raw = prefs.getString(KEY_ADVISOR_PRESET_MODE, AdvisorPresetMode.BEST_PERFORMANCE.name)
+        return AdvisorPresetMode.entries.firstOrNull { it.name == raw } ?: AdvisorPresetMode.BEST_PERFORMANCE
     }
 
-    val edgeSidebarConfigFlow: Flow<EdgeSidebarConfig> = context.dataStore.data.map { prefs ->
-        EdgeSidebarConfig(
-            enabledInApp = prefs[Keys.SIDEBAR_IN_APP] ?: true,
-            systemFloatingEnabled = prefs[Keys.SIDEBAR_SYSTEM] ?: false,
-            isRightEdge = prefs[Keys.SIDEBAR_RIGHT_EDGE] ?: true,
-            showFpsBadgeOnHandle = prefs[Keys.SIDEBAR_SHOW_FPS] ?: true,
-            handleOpacity = prefs[Keys.SIDEBAR_OPACITY] ?: 0.90f
-        )
+    fun saveClonedButtonsConfig(config: ClonedButtonsConfig) {
+        val serializedButtons = config.buttons.joinToString("|") { btn ->
+            listOf(
+                btn.id,
+                btn.label,
+                btn.actionTitleAr.replace("|", " ").replace(";", " "),
+                btn.enabled,
+                btn.mode.name,
+                btn.sourceX,
+                btn.sourceY,
+                btn.targetX,
+                btn.targetY,
+                btn.buttonSizeDp,
+                btn.opacity,
+                btn.colorHex
+            ).joinToString(";")
+        }
+        prefs.edit {
+            putBoolean(KEY_CLONED_ENABLED, config.enabled)
+            putBoolean(KEY_CLONED_LINES, config.showConnectionLines)
+            putBoolean(KEY_CLONED_LOCKED, config.editPositionsLocked)
+            putBoolean(KEY_CLONED_HAPTIC, config.hapticFeedback)
+            putString(KEY_CLONED_BUTTONS_DATA, serializedButtons)
+        }
     }
 
-    val lowEndOptimizerFlow: Flow<LowEndOptimizerConfig> = context.dataStore.data.map { prefs ->
-        val visionId = prefs[Keys.VISION_FILTER] ?: ScreenVisionFilter.NONE.id
-        val audioId = prefs[Keys.AUDIO_RADAR] ?: AudioRadarPreset.NORMAL.id
-        val voiceId = prefs[Keys.VOICE_MOD] ?: VoiceModPreset.ORIGINAL.id
-        val thermalId = prefs[Keys.SMART_THERMAL_MODE] ?: SmartThermalMode.AUTO_ADAPTIVE.id
-        val advisorId = prefs[Keys.ADVISOR_MODE] ?: AdvisorPresetMode.BALANCED.id
-        LowEndOptimizerConfig(
-            autoCleanInBackground = prefs[Keys.AUTO_CLEAN_BG] ?: true,
-            autoCleanIntervalSec = prefs[Keys.AUTO_CLEAN_INTERVAL] ?: 120,
-            ramThresholdPercent = prefs[Keys.RAM_THRESHOLD] ?: 82,
-            resolutionScalePreset = prefs[Keys.RES_PRESET] ?: "720p Esports (موصى به للأجهزة الضعيفة)",
-            touchSamplingRateHz = prefs[Keys.TOUCH_HZ] ?: 480,
-            gpuForce4xMsaaOff = prefs[Keys.GPU_MSAA_OFF] ?: true,
-            shadowDownscale = prefs[Keys.SHADOW_DOWNSCALE] ?: true,
-            zeroLagNetworkMode = prefs[Keys.ZERO_LAG_NET] ?: true,
-            blockHeadsUpNotifications = prefs[Keys.BLOCK_NOTIFS] ?: true,
-            lockScreenBrightness = prefs[Keys.LOCK_BRIGHTNESS] ?: true,
-            coolingFanSpeedLevel = prefs[Keys.FAN_SPEED] ?: 3,
-            visionFilter = ScreenVisionFilter.entries.find { it.id == visionId } ?: ScreenVisionFilter.NONE,
-            audioRadarPreset = AudioRadarPreset.entries.find { it.id == audioId } ?: AudioRadarPreset.NORMAL,
-            voiceModPreset = VoiceModPreset.entries.find { it.id == voiceId } ?: VoiceModPreset.ORIGINAL,
-            mistouchPrevention = prefs[Keys.MISTOUCH_PREV] ?: true,
-            bypassChargingGuard = prefs[Keys.BYPASS_CHARGE] ?: true,
-            afkBlackScreenSaver = false,
-            customBrightnessLevel = prefs[Keys.CUSTOM_BRIGHTNESS] ?: 85,
-            gameMediaVolumePercent = prefs[Keys.GAME_MEDIA_VOL] ?: 90,
-            dnsServerPreset = prefs[Keys.DNS_PRESET] ?: "Cloudflare 1.1.1.1 (أسرع استجابة بنج)",
-            autoRestoreSettingsOnExit = prefs[Keys.AUTO_RESTORE_EXIT] ?: true,
-            smartThermalMode = SmartThermalMode.entries.find { it.id == thermalId } ?: SmartThermalMode.AUTO_ADAPTIVE,
-            notificationShieldEnabled = prefs[Keys.NOTIF_SHIELD_ENABLED] ?: false,
-            fpsOverlayEnabled = prefs[Keys.FPS_OVERLAY_ENABLED] ?: false,
-            tempOverlayEnabled = prefs[Keys.TEMP_OVERLAY_ENABLED] ?: false,
-            ramOverlayEnabled = prefs[Keys.RAM_OVERLAY_ENABLED] ?: false,
-            magnifierEnabled = prefs[Keys.MAGNIFIER_ENABLED] ?: false,
-            magnifierZoom = prefs[Keys.MAGNIFIER_ZOOM] ?: 2.0f,
-            advisorPresetMode = AdvisorPresetMode.entries.find { it.id == advisorId } ?: AdvisorPresetMode.BALANCED
-        )
-    }
-
-    val savedPerGameProfilesRawFlow: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.PER_GAME_PROFILES_SERIALIZED] ?: ""
-    }
-
-    val lastActiveProfileIdFlow: Flow<String> = context.dataStore.data.map { prefs ->
-        prefs[Keys.LAST_ACTIVE_PROFILE_ID] ?: ""
-    }
-
-    val clonedButtonsConfigFlow: Flow<ClonedButtonsConfig> = context.dataStore.data.map { prefs ->
-        val rawSerialized = prefs[Keys.CLONED_SERIALIZED]
-        val parsedButtons = if (!rawSerialized.isNullOrBlank()) {
-            deserializeClonedButtons(rawSerialized)
+    fun loadClonedButtonsConfig(): ClonedButtonsConfig {
+        val defaults = ClonedButtonsConfig.defaultClonedButtons()
+        val rawData = prefs.getString(KEY_CLONED_BUTTONS_DATA, null)
+        val parsedButtons = if (!rawData.isNullOrBlank()) {
+            rawData.split("|").mapNotNull { entry ->
+                val parts = entry.split(";")
+                if (parts.size >= 12) {
+                    val id = parts[0].toIntOrNull() ?: return@mapNotNull null
+                    val label = parts[1]
+                    val title = parts[2]
+                    val enabled = parts[3].toBooleanStrictOrNull() ?: true
+                    val mode = ClonedButtonMode.entries.firstOrNull { it.name == parts[4] }
+                        ?: ClonedButtonMode.SINGLE_TAP
+                    val sx = parts[5].toFloatOrNull()?.coerceIn(0.05f, 0.95f) ?: 0.2f
+                    val sy = parts[6].toFloatOrNull()?.coerceIn(0.08f, 0.92f) ?: 0.4f
+                    val tx = parts[7].toFloatOrNull()?.coerceIn(0.05f, 0.95f) ?: 0.8f
+                    val ty = parts[8].toFloatOrNull()?.coerceIn(0.08f, 0.92f) ?: 0.7f
+                    val size = parts[9].toIntOrNull()?.coerceIn(36, 84) ?: 52
+                    val opacity = parts[10].toFloatOrNull()?.coerceIn(0.35f, 1.0f) ?: 0.88f
+                    val colorHex = parts[11].toLongOrNull() ?: 0xFFFF1744L
+                    ClonedTouchButton(
+                        id = id,
+                        label = label,
+                        actionTitleAr = title,
+                        enabled = enabled,
+                        mode = mode,
+                        sourceX = sx,
+                        sourceY = sy,
+                        targetX = tx,
+                        targetY = ty,
+                        buttonSizeDp = size,
+                        opacity = opacity,
+                        colorHex = colorHex
+                    )
+                } else {
+                    null
+                }
+            }
         } else {
-            defaultClonedTouchButtons()
+            emptyList()
         }
-        ClonedButtonsConfig(
-            masterEnabled = prefs[Keys.CLONED_MASTER_ENABLED] ?: true,
-            systemOverlayEnabled = prefs[Keys.CLONED_SYSTEM_OVERLAY] ?: false,
-            isLockedForPlay = prefs[Keys.CLONED_LOCKED_PLAY] ?: false,
-            buttonSizeDp = prefs[Keys.CLONED_BTN_SIZE] ?: 52f,
-            buttonOpacity = prefs[Keys.CLONED_BTN_OPACITY] ?: 0.86f,
-            buttons = parsedButtons
+
+        val finalButtons = if (parsedButtons.size == defaults.size) parsedButtons else defaults
+        return ClonedButtonsConfig(
+            enabled = prefs.getBoolean(KEY_CLONED_ENABLED, false),
+            showConnectionLines = prefs.getBoolean(KEY_CLONED_LINES, true),
+            editPositionsLocked = prefs.getBoolean(KEY_CLONED_LOCKED, false),
+            hapticFeedback = prefs.getBoolean(KEY_CLONED_HAPTIC, true),
+            buttons = finalButtons
         )
     }
 
-    val whitelistedPackagesFlow: Flow<Set<String>> = context.dataStore.data.map { prefs ->
-        prefs[Keys.WHITELISTED_PKGS] ?: emptySet()
-    }
-
-    suspend fun savePerformanceMode(mode: PerformanceMode) {
-        context.dataStore.edit { it[Keys.PERF_MODE] = mode.id }
-    }
-
-    suspend fun saveTriggerConfig(config: ShoulderTriggerConfig) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.TRIGGERS_ENABLED] = config.enabled
-            prefs[Keys.L1_X] = config.l1XRatio
-            prefs[Keys.L1_Y] = config.l1YRatio
-            prefs[Keys.L1_MODE] = config.l1Mode.id
-            prefs[Keys.L1_RPS] = config.l1BurstRps
-            prefs[Keys.R1_X] = config.r1XRatio
-            prefs[Keys.R1_Y] = config.r1YRatio
-            prefs[Keys.R1_MODE] = config.r1Mode.id
-            prefs[Keys.R1_RPS] = config.r1BurstRps
-            prefs[Keys.TRIGGER_HAPTIC] = config.hapticFeedback
-            prefs[Keys.TRIGGER_SOUND] = config.soundEffect
-            prefs[Keys.TRIGGER_COMBO] = config.comboLinkLR
+    fun saveCrosshairConfig(config: CrosshairConfig) {
+        prefs.edit {
+            putBoolean(KEY_CH_ENABLED, config.enabled)
+            putString(KEY_CH_STYLE, config.style.name)
+            putFloat(KEY_CH_SIZE, config.sizeDp)
+            putFloat(KEY_CH_STROKE, config.strokeWidthDp)
+            putFloat(KEY_CH_OPACITY, config.opacity)
+            putLong(KEY_CH_COLOR, config.colorHex)
+            putFloat(KEY_CH_OFFSET_X, config.offsetXDp)
+            putFloat(KEY_CH_OFFSET_Y, config.offsetYDp)
         }
     }
 
-    suspend fun saveCrosshairConfig(config: CrosshairConfig) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.CROSSHAIR_IN_APP] = config.enabledInApp
-            prefs[Keys.CROSSHAIR_SYSTEM] = config.systemOverlayEnabled
-            prefs[Keys.CROSSHAIR_STYLE] = config.style.id
-            prefs[Keys.CROSSHAIR_COLOR] = config.colorOption.id
-            prefs[Keys.CROSSHAIR_SIZE] = config.sizeDp
-            prefs[Keys.CROSSHAIR_STROKE] = config.strokeWidthDp
-            prefs[Keys.CROSSHAIR_OPACITY] = config.opacity
-            prefs[Keys.CROSSHAIR_OFFSET_X] = config.offsetX
-            prefs[Keys.CROSSHAIR_OFFSET_Y] = config.offsetY
+    fun loadCrosshairConfig(): CrosshairConfig {
+        val styleName = prefs.getString(KEY_CH_STYLE, CrosshairStyle.TACTICAL_CROSS.name)
+        val style = CrosshairStyle.entries.firstOrNull { it.name == styleName }
+            ?: CrosshairStyle.TACTICAL_CROSS
+
+        return CrosshairConfig(
+            enabled = prefs.getBoolean(KEY_CH_ENABLED, false),
+            style = style,
+            sizeDp = prefs.getFloat(KEY_CH_SIZE, 28f),
+            strokeWidthDp = prefs.getFloat(KEY_CH_STROKE, 2.2f),
+            opacity = prefs.getFloat(KEY_CH_OPACITY, 0.9f),
+            colorHex = prefs.getLong(KEY_CH_COLOR, 0xFFFF1744),
+            offsetXDp = prefs.getFloat(KEY_CH_OFFSET_X, 0f),
+            offsetYDp = prefs.getFloat(KEY_CH_OFFSET_Y, 0f)
+        )
+    }
+
+    fun saveLowEndConfig(config: LowEndDeviceConfig) {
+        prefs.edit {
+            putBoolean(KEY_LOW_END_BOOST, config.lowEndBoostEnabled)
+            putString(KEY_SMART_THERMAL_MODE, config.smartThermalMode.name)
+            putBoolean(KEY_LOW_END_THERMAL, config.thermalGuardEnabled)
+            putBoolean(KEY_LOW_END_SHADERS, config.disableHeavyShaders)
+            putBoolean(KEY_LOW_END_TOUCH_GUARD, config.touchEdgeRejectEnabled)
+            putBoolean(KEY_LOW_END_BRIGHTNESS_LOCK, config.brightnessLockEnabled)
+            putInt(KEY_LOW_END_BRIGHTNESS_VAL, config.lockedBrightnessPercent)
+            putBoolean(KEY_LOW_END_WIFI_PRIORITY, config.wiFiPriorityEnabled)
+            putBoolean(KEY_LOW_END_BLOCK_NOTIFS, config.blockHeadsUpNotifications)
+            putInt(KEY_LOW_END_RAM_THRESHOLD, config.ramAutoPurgeThresholdPercent)
         }
     }
 
-    suspend fun saveEdgeSidebarConfig(config: EdgeSidebarConfig) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.SIDEBAR_IN_APP] = config.enabledInApp
-            prefs[Keys.SIDEBAR_SYSTEM] = config.systemFloatingEnabled
-            prefs[Keys.SIDEBAR_RIGHT_EDGE] = config.isRightEdge
-            prefs[Keys.SIDEBAR_SHOW_FPS] = config.showFpsBadgeOnHandle
-            prefs[Keys.SIDEBAR_OPACITY] = config.handleOpacity
+    fun loadLowEndConfig(): LowEndDeviceConfig {
+        val smartThermalName = prefs.getString(KEY_SMART_THERMAL_MODE, SmartThermalMode.AUTO_ADAPTIVE.name)
+        val smartThermalMode = SmartThermalMode.entries.firstOrNull { it.name == smartThermalName }
+            ?: SmartThermalMode.AUTO_ADAPTIVE
+
+        return LowEndDeviceConfig(
+            lowEndBoostEnabled = prefs.getBoolean(KEY_LOW_END_BOOST, false),
+            smartThermalMode = smartThermalMode,
+            thermalGuardEnabled = prefs.getBoolean(KEY_LOW_END_THERMAL, true),
+            disableHeavyShaders = prefs.getBoolean(KEY_LOW_END_SHADERS, false),
+            touchEdgeRejectEnabled = prefs.getBoolean(KEY_LOW_END_TOUCH_GUARD, false),
+            brightnessLockEnabled = prefs.getBoolean(KEY_LOW_END_BRIGHTNESS_LOCK, false),
+            lockedBrightnessPercent = prefs.getInt(KEY_LOW_END_BRIGHTNESS_VAL, 82).coerceIn(25, 100),
+            wiFiPriorityEnabled = prefs.getBoolean(KEY_LOW_END_WIFI_PRIORITY, true),
+            blockHeadsUpNotifications = prefs.getBoolean(KEY_LOW_END_BLOCK_NOTIFS, false),
+            ramAutoPurgeThresholdPercent = prefs.getInt(KEY_LOW_END_RAM_THRESHOLD, 80).coerceIn(60, 95)
+        )
+    }
+
+    fun saveGfxResolution(preset: GfxResolutionPreset) {
+        prefs.edit { putString(KEY_GFX_RES, preset.name) }
+    }
+
+    fun loadGfxResolution(): GfxResolutionPreset {
+        val raw = prefs.getString(KEY_GFX_RES, GfxResolutionPreset.RES_900P.name)
+        return GfxResolutionPreset.entries.firstOrNull { it.name == raw } ?: GfxResolutionPreset.RES_900P
+    }
+
+    fun saveTouchSamplingRate(rate: TouchSamplingRate) {
+        prefs.edit { putString(KEY_TOUCH_RATE, rate.name) }
+    }
+
+    fun loadTouchSamplingRate(): TouchSamplingRate {
+        val raw = prefs.getString(KEY_TOUCH_RATE, TouchSamplingRate.HZ_960.name)
+        return TouchSamplingRate.entries.firstOrNull { it.name == raw } ?: TouchSamplingRate.HZ_960
+    }
+
+    fun saveWhitelistedPackages(packages: Set<String>) {
+        prefs.edit { putStringSet(KEY_WHITELIST_PKGS, packages) }
+    }
+
+    fun loadWhitelistedPackages(): Set<String> {
+        return prefs.getStringSet(KEY_WHITELIST_PKGS, emptySet()) ?: emptySet()
+    }
+
+    fun saveGameProfiles(profiles: List<GameSpaceProfile>) {
+        val serialized = profiles.joinToString("|") { p ->
+            listOf(
+                p.id,
+                p.title.replace("|", " ").replace(";", " "),
+                p.packageName,
+                p.genreAr.replace("|", " ").replace(";", " "),
+                p.recommendedMode.name,
+                p.recommendedFps,
+                p.accentHex,
+                p.autoCleanRamBeforeLaunch,
+                p.notificationShieldEnabled,
+                p.crosshairEnabled,
+                p.fpsOverlayEnabled,
+                p.brightnessLockEnabled,
+                p.touchGuardEnabled,
+                p.wiFiPriorityEnabled,
+                p.preferredAdvisorMode.name,
+                p.sidebarOverlayEnabled,
+                p.isUserAdded
+            ).joinToString(";")
+        }
+        prefs.edit {
+            putString(KEY_MY_GAMES_DATA, serialized)
+            putBoolean(KEY_MY_GAMES_INITIALIZED, true)
         }
     }
 
-    suspend fun saveLowEndOptimizerConfig(config: LowEndOptimizerConfig) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.AUTO_CLEAN_BG] = config.autoCleanInBackground
-            prefs[Keys.AUTO_CLEAN_INTERVAL] = config.autoCleanIntervalSec
-            prefs[Keys.RAM_THRESHOLD] = config.ramThresholdPercent
-            prefs[Keys.RES_PRESET] = config.resolutionScalePreset
-            prefs[Keys.TOUCH_HZ] = config.touchSamplingRateHz
-            prefs[Keys.GPU_MSAA_OFF] = config.gpuForce4xMsaaOff
-            prefs[Keys.SHADOW_DOWNSCALE] = config.shadowDownscale
-            prefs[Keys.ZERO_LAG_NET] = config.zeroLagNetworkMode
-            prefs[Keys.BLOCK_NOTIFS] = config.blockHeadsUpNotifications
-            prefs[Keys.LOCK_BRIGHTNESS] = config.lockScreenBrightness
-            prefs[Keys.FAN_SPEED] = config.coolingFanSpeedLevel
-            prefs[Keys.VISION_FILTER] = config.visionFilter.id
-            prefs[Keys.AUDIO_RADAR] = config.audioRadarPreset.id
-            prefs[Keys.VOICE_MOD] = config.voiceModPreset.id
-            prefs[Keys.MISTOUCH_PREV] = config.mistouchPrevention
-            prefs[Keys.BYPASS_CHARGE] = config.bypassChargingGuard
-            prefs[Keys.CUSTOM_BRIGHTNESS] = config.customBrightnessLevel
-            prefs[Keys.GAME_MEDIA_VOL] = config.gameMediaVolumePercent
-            prefs[Keys.DNS_PRESET] = config.dnsServerPreset
-            prefs[Keys.AUTO_RESTORE_EXIT] = config.autoRestoreSettingsOnExit
-            prefs[Keys.SMART_THERMAL_MODE] = config.smartThermalMode.id
-            prefs[Keys.NOTIF_SHIELD_ENABLED] = config.notificationShieldEnabled
-            prefs[Keys.FPS_OVERLAY_ENABLED] = config.fpsOverlayEnabled
-            prefs[Keys.TEMP_OVERLAY_ENABLED] = config.tempOverlayEnabled
-            prefs[Keys.RAM_OVERLAY_ENABLED] = config.ramOverlayEnabled
-            prefs[Keys.MAGNIFIER_ENABLED] = config.magnifierEnabled
-            prefs[Keys.MAGNIFIER_ZOOM] = config.magnifierZoom
-            prefs[Keys.ADVISOR_MODE] = config.advisorPresetMode.id
-        }
+    fun hasSavedMyGamesList(): Boolean {
+        return prefs.getBoolean(KEY_MY_GAMES_INITIALIZED, false)
     }
 
-    suspend fun saveLastActiveProfileId(profileId: String) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.LAST_ACTIVE_PROFILE_ID] = profileId
-        }
+    fun loadRawGameProfiles(): String {
+        return prefs.getString(KEY_MY_GAMES_DATA, "") ?: ""
     }
 
-    suspend fun savePerGameProfiles(profiles: List<GameSpaceProfile>) {
-        val raw = serializePerGameProfiles(profiles)
-        context.dataStore.edit { prefs ->
-            prefs[Keys.PER_GAME_PROFILES_SERIALIZED] = raw
+    fun parseSavedGameProfiles(
+        rawSaved: String,
+        isPackageInstalled: (String) -> Boolean
+    ): List<GameSpaceProfile> {
+        if (rawSaved.isBlank()) return emptyList()
+        return rawSaved.split("|").mapNotNull { entry ->
+            val parts = entry.split(";")
+            if (parts.size >= 15) {
+                val id = parts[0]
+                val title = parts[1]
+                val pkg = parts[2]
+                val genre = parts[3]
+                val mode = PerformanceMode.entries.firstOrNull { it.name == parts[4] }
+                    ?: PerformanceMode.PERFORMANCE
+                val fps = parts[5].toIntOrNull() ?: 90
+                val accent = parts[6].toLongOrNull() ?: 0xFFFF1744L
+                val autoClean = parts[7].toBooleanStrictOrNull() ?: true
+                val notifShield = parts[8].toBooleanStrictOrNull() ?: true
+                val crosshair = parts[9].toBooleanStrictOrNull() ?: false
+                val fpsHud = parts[10].toBooleanStrictOrNull() ?: true
+                val brightLock = parts[11].toBooleanStrictOrNull() ?: false
+                val touchGuard = parts[12].toBooleanStrictOrNull() ?: false
+                val wifiPrio = parts[13].toBooleanStrictOrNull() ?: true
+                val advisor = AdvisorPresetMode.entries.firstOrNull { it.name == parts[14] }
+                    ?: AdvisorPresetMode.BEST_PERFORMANCE
+                val sidebar = if (parts.size >= 16) parts[15].toBooleanStrictOrNull() ?: true else true
+                val userAdded = if (parts.size >= 17) parts[16].toBooleanStrictOrNull() ?: true else true
+
+                GameSpaceProfile(
+                    id = id,
+                    title = title,
+                    packageName = pkg,
+                    genreAr = genre,
+                    recommendedMode = mode,
+                    recommendedFps = fps,
+                    accentHex = accent,
+                    isInstalled = isPackageInstalled(pkg),
+                    isUserAdded = userAdded,
+                    autoCleanRamBeforeLaunch = autoClean,
+                    notificationShieldEnabled = notifShield,
+                    crosshairEnabled = crosshair,
+                    fpsOverlayEnabled = fpsHud,
+                    sidebarOverlayEnabled = sidebar,
+                    brightnessLockEnabled = brightLock,
+                    touchGuardEnabled = touchGuard,
+                    wiFiPriorityEnabled = wifiPrio,
+                    preferredAdvisorMode = advisor
+                )
+            } else {
+                null
+            }
         }
     }
 
     fun mergeSavedProfilesWithCatalog(
         rawSaved: String,
         defaultCatalog: List<GameSpaceProfile>,
-        isPackageInstalledCheck: (String) -> Boolean
+        isPackageInstalled: (String) -> Boolean
     ): List<GameSpaceProfile> {
-        if (rawSaved.isBlank()) return defaultCatalog
-        val parsed = deserializePerGameProfiles(rawSaved)
-        if (parsed.isEmpty()) return defaultCatalog
-
-        val savedById = parsed.associateBy { it.id }
-        val mergedDefaults = defaultCatalog.map { def ->
-            val saved = savedById[def.id]
-            if (saved != null) {
-                saved.copy(isInstalledOnDevice = isPackageInstalledCheck(saved.packageName))
-            } else {
-                def
-            }
+        val savedList = parseSavedGameProfiles(rawSaved, isPackageInstalled)
+        if (savedList.isNotEmpty()) {
+            return savedList
         }
-        val customAdded = parsed.filter { p -> defaultCatalog.none { it.id == p.id } }.map {
-            it.copy(
-                isInstalledOnDevice = isPackageInstalledCheck(it.packageName),
-                isCustomAdded = true
-            )
-        }
-        return mergedDefaults + customAdded
+        return defaultCatalog
     }
 
-    private fun serializePerGameProfiles(profiles: List<GameSpaceProfile>): String {
-        return profiles.joinToString(";;") { p ->
-            listOf(
-                p.id.replace("|", "").replace(";", ""),
-                p.title.replace("|", "").replace(";", ""),
-                p.packageName.replace("|", "").replace(";", ""),
-                p.genreAr.replace("|", "").replace(";", ""),
-                p.recommendedMode.id,
-                p.l1ActionAr.replace("|", "").replace(";", ""),
-                p.r1ActionAr.replace("|", "").replace(";", ""),
-                p.l1X,
-                p.l1Y,
-                p.r1X,
-                p.r1Y,
-                p.targetFps,
-                p.accentHex,
-                p.smartThermalMode.id,
-                p.notificationShieldEnabled,
-                p.magnifierEnabled,
-                p.magnifierZoom,
-                p.crosshairEnabled,
-                p.crosshairStyle.id,
-                p.touchProtectionEnabled,
-                p.gamingSidebarEnabled,
-                p.fpsOverlayEnabled,
-                p.tempOverlayEnabled,
-                p.ramOverlayEnabled,
-                p.triggersEnabled,
-                p.clonedButtonsEnabled,
-                p.advisorMode.id,
-                p.isCustomAdded
-            ).joinToString("|")
+    fun saveLastSessionGame(
+        gameId: String,
+        title: String,
+        packageName: String,
+        timestampMs: Long,
+        mode: PerformanceMode
+    ) {
+        prefs.edit {
+            putString(KEY_LAST_GAME_ID, gameId)
+            putString(KEY_LAST_GAME_TITLE, title)
+            putString(KEY_LAST_GAME_PKG, packageName)
+            putLong(KEY_LAST_GAME_TIME, timestampMs)
+            putString(KEY_LAST_GAME_MODE, mode.name)
         }
     }
 
-    private fun deserializePerGameProfiles(raw: String): List<GameSpaceProfile> {
-        return raw.split(";;").mapNotNull { entry ->
-            val parts = entry.split("|")
-            if (parts.size < 28) return@mapNotNull null
-            try {
-                GameSpaceProfile(
-                    id = parts[0],
-                    title = parts[1],
-                    packageName = parts[2],
-                    genreAr = parts[3],
-                    recommendedMode = PerformanceMode.entries.find { it.id == parts[4] } ?: PerformanceMode.BALANCE,
-                    l1ActionAr = parts[5],
-                    r1ActionAr = parts[6],
-                    l1X = parts[7].toFloat().coerceIn(0.05f, 0.95f),
-                    l1Y = parts[8].toFloat().coerceIn(0.05f, 0.95f),
-                    r1X = parts[9].toFloat().coerceIn(0.05f, 0.95f),
-                    r1Y = parts[10].toFloat().coerceIn(0.05f, 0.95f),
-                    targetFps = parts[11].toInt().coerceIn(30, 144),
-                    accentHex = parts[12].toLong(),
-                    smartThermalMode = SmartThermalMode.entries.find { it.id == parts[13] } ?: SmartThermalMode.AUTO_ADAPTIVE,
-                    notificationShieldEnabled = parts[14].toBoolean(),
-                    magnifierEnabled = parts[15].toBoolean(),
-                    magnifierZoom = parts[16].toFloat().coerceIn(1.2f, 4.0f),
-                    crosshairEnabled = parts[17].toBoolean(),
-                    crosshairStyle = CrosshairStyle.entries.find { it.id == parts[18] } ?: CrosshairStyle.CIRCLE_DOT,
-                    touchProtectionEnabled = parts[19].toBoolean(),
-                    gamingSidebarEnabled = parts[20].toBoolean(),
-                    fpsOverlayEnabled = parts[21].toBoolean(),
-                    tempOverlayEnabled = parts[22].toBoolean(),
-                    ramOverlayEnabled = parts[23].toBoolean(),
-                    triggersEnabled = parts[24].toBoolean(),
-                    clonedButtonsEnabled = parts[25].toBoolean(),
-                    advisorMode = AdvisorPresetMode.entries.find { it.id == parts[26] } ?: AdvisorPresetMode.BALANCED,
-                    isCustomAdded = parts[27].toBoolean()
-                )
-            } catch (_: Exception) {
-                null
-            }
-        }
+    fun loadLastSessionGameRaw(): Triple<String, String, String>? {
+        val id = prefs.getString(KEY_LAST_GAME_ID, null) ?: return null
+        val title = prefs.getString(KEY_LAST_GAME_TITLE, null) ?: return null
+        val pkg = prefs.getString(KEY_LAST_GAME_PKG, null) ?: return null
+        return Triple(id, title, pkg)
     }
 
-    suspend fun saveClonedButtonsConfig(config: ClonedButtonsConfig) {
-        context.dataStore.edit { prefs ->
-            prefs[Keys.CLONED_MASTER_ENABLED] = config.masterEnabled
-            prefs[Keys.CLONED_SYSTEM_OVERLAY] = config.systemOverlayEnabled
-            prefs[Keys.CLONED_LOCKED_PLAY] = config.isLockedForPlay
-            prefs[Keys.CLONED_BTN_SIZE] = config.buttonSizeDp
-            prefs[Keys.CLONED_BTN_OPACITY] = config.buttonOpacity
-            prefs[Keys.CLONED_SERIALIZED] = serializeClonedButtons(config.buttons)
-        }
+    fun loadLastSessionMeta(): Pair<Long, PerformanceMode> {
+        val ts = prefs.getLong(KEY_LAST_GAME_TIME, 0L)
+        val modeName = prefs.getString(KEY_LAST_GAME_MODE, PerformanceMode.PERFORMANCE.name)
+        val mode = PerformanceMode.entries.firstOrNull { it.name == modeName } ?: PerformanceMode.PERFORMANCE
+        return ts to mode
     }
 
-    private fun serializeClonedButtons(buttons: List<ClonedTouchButton>): String {
-        return buttons.joinToString(";") { b ->
-            listOf(
-                b.id,
-                b.badge,
-                b.labelAr.replace(";", "").replace("|", ""),
-                b.enabled,
-                b.buttonXRatio,
-                b.buttonYRatio,
-                b.targetXRatio,
-                b.targetYRatio,
-                b.fireMode.id,
-                b.burstRps,
-                b.colorHex
-            ).joinToString("|")
-        }
-    }
+    companion object {
+        private const val KEY_PERF_MODE = "key_perf_mode"
+        private const val KEY_ADVISOR_PRESET_MODE = "key_advisor_preset_mode"
 
-    private fun deserializeClonedButtons(raw: String): List<ClonedTouchButton> {
-        val defaults = defaultClonedTouchButtons()
-        val parsed = raw.split(";").mapNotNull { item ->
-            val parts = item.split("|")
-            if (parts.size < 11) return@mapNotNull null
-            try {
-                val modeId = parts[8]
-                ClonedTouchButton(
-                    id = parts[0].toInt(),
-                    badge = parts[1],
-                    labelAr = parts[2],
-                    enabled = parts[3].toBoolean(),
-                    buttonXRatio = parts[4].toFloat().coerceIn(0.05f, 0.95f),
-                    buttonYRatio = parts[5].toFloat().coerceIn(0.08f, 0.92f),
-                    targetXRatio = parts[6].toFloat().coerceIn(0.05f, 0.95f),
-                    targetYRatio = parts[7].toFloat().coerceIn(0.08f, 0.92f),
-                    fireMode = TriggerFireMode.entries.find { it.id == modeId } ?: TriggerFireMode.SINGLE_TAP,
-                    burstRps = parts[9].toInt().coerceIn(4, 20),
-                    colorHex = parts[10].toLong()
-                )
-            } catch (_: Exception) {
-                null
-            }
-        }
-        return if (parsed.size == defaults.size) parsed else defaults
-    }
+        private const val KEY_CLONED_ENABLED = "key_cloned_enabled"
+        private const val KEY_CLONED_LINES = "key_cloned_lines"
+        private const val KEY_CLONED_LOCKED = "key_cloned_locked"
+        private const val KEY_CLONED_HAPTIC = "key_cloned_haptic"
+        private const val KEY_CLONED_BUTTONS_DATA = "key_cloned_buttons_data"
 
-    suspend fun toggleWhitelistPackage(packageName: String) {
-        context.dataStore.edit { prefs ->
-            val current = prefs[Keys.WHITELISTED_PKGS] ?: emptySet()
-            prefs[Keys.WHITELISTED_PKGS] = if (current.contains(packageName)) {
-                current - packageName
-            } else {
-                current + packageName
-            }
-        }
+        private const val KEY_CH_ENABLED = "key_ch_enabled"
+        private const val KEY_CH_STYLE = "key_ch_style"
+        private const val KEY_CH_SIZE = "key_ch_size"
+        private const val KEY_CH_STROKE = "key_ch_stroke"
+        private const val KEY_CH_OPACITY = "key_ch_opacity"
+        private const val KEY_CH_COLOR = "key_ch_color"
+        private const val KEY_CH_OFFSET_X = "key_ch_offset_x"
+        private const val KEY_CH_OFFSET_Y = "key_ch_offset_y"
+
+        private const val KEY_LOW_END_BOOST = "key_low_end_boost"
+        private const val KEY_SMART_THERMAL_MODE = "key_smart_thermal_mode"
+        private const val KEY_LOW_END_THERMAL = "key_low_end_thermal"
+        private const val KEY_LOW_END_SHADERS = "key_low_end_shaders"
+        private const val KEY_LOW_END_TOUCH_GUARD = "key_low_end_touch_guard"
+        private const val KEY_LOW_END_BRIGHTNESS_LOCK = "key_low_end_brightness_lock"
+        private const val KEY_LOW_END_BRIGHTNESS_VAL = "key_low_end_brightness_val"
+        private const val KEY_LOW_END_WIFI_PRIORITY = "key_low_end_wifi_priority"
+        private const val KEY_LOW_END_BLOCK_NOTIFS = "key_low_end_block_notifs"
+        private const val KEY_LOW_END_RAM_THRESHOLD = "key_low_end_ram_threshold"
+
+        private const val KEY_GFX_RES = "key_gfx_res"
+        private const val KEY_TOUCH_RATE = "key_touch_rate"
+        private const val KEY_WHITELIST_PKGS = "key_whitelist_pkgs"
+
+        private const val KEY_MY_GAMES_DATA = "key_my_games_data_v2"
+        private const val KEY_MY_GAMES_INITIALIZED = "key_my_games_initialized_v2"
+        private const val KEY_LAST_GAME_ID = "key_last_game_id"
+        private const val KEY_LAST_GAME_TITLE = "key_last_game_title"
+        private const val KEY_LAST_GAME_PKG = "key_last_game_pkg"
+        private const val KEY_LAST_GAME_TIME = "key_last_game_time"
+        private const val KEY_LAST_GAME_MODE = "key_last_game_mode"
     }
 }
