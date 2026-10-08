@@ -829,13 +829,20 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     fun toggleClonedButtonsMaster(enabled: Boolean) {
         val updated = _clonedButtonsConfig.value.copy(enabled = enabled)
         updateAndPersistClonedConfig(updated)
-        if (enabled && boosterManager.canDrawOverlays()) {
-            startFloatingSidebarOverlay(showFpsHud = _fpsHudOverlayEnabled.value)
+        if (enabled) {
+            if (boosterManager.canDrawOverlays()) {
+                startFloatingSidebarOverlay(showFpsHud = _fpsHudOverlayEnabled.value)
+                if (!boosterManager.isAccessibilityServiceEnabled()) {
+                    postBanner("تم إظهار الأزرار المنسوخة (C1–C4) — فعّل خدمة إمكانية الوصول لتنفيذ اللمس داخل الألعاب")
+                } else {
+                    postBanner("تم تفعيل استنساخ الأزرار اللمسية العائمة (C1–C4) فوق الألعاب!")
+                }
+            } else {
+                postBanner("تم تفعيل الأزرار المنسوخة (C1–C4) داخل الاستوديو — لعرضها فوق الألعاب امنح صلاحية الظهور العائم")
+            }
+        } else {
+            postBanner("تم إيقاف الأزرار المستنسخة (C1–C4)")
         }
-        postBanner(
-            if (enabled) "تم تفعيل استنساخ الأزرار اللمسية على الشاشة (C1–C4)"
-            else "تم إيقاف الأزرار المستنسخة (C1–C4)"
-        )
     }
 
     fun selectClonedButtonForEdit(buttonId: Int) {
@@ -932,8 +939,15 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     fun toggleCrosshair(enabled: Boolean) {
         val updated = _crosshairConfig.value.copy(enabled = enabled)
         updateAndPersistCrosshair(updated)
-        if (enabled && boosterManager.canDrawOverlays()) {
-            startFloatingSidebarOverlay(showFpsHud = _fpsHudOverlayEnabled.value)
+        if (enabled) {
+            if (boosterManager.canDrawOverlays()) {
+                startFloatingSidebarOverlay(showFpsHud = _fpsHudOverlayEnabled.value)
+                postBanner("تم تفعيل مؤشر التصويب العائم (${updated.style.titleAr})")
+            } else {
+                postBanner("تم تفعيل معاينة المؤشر داخل التطبيق — لعرضه فوق الألعاب امنح صلاحية الظهور فوق التطبيقات")
+            }
+        } else {
+            postBanner("تم إيقاف مؤشر التصويب العائم")
         }
     }
 
@@ -971,11 +985,13 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     fun selectGfxResolution(preset: GfxResolutionPreset) {
         _gfxResolution.value = preset
         prefsRepo.saveGfxResolution(preset)
+        postBanner("تم ضبط دقة الرندر على: ${preset.label}")
     }
 
     fun selectTouchSamplingRate(rate: TouchSamplingRate) {
         _touchSamplingRate.value = rate
         prefsRepo.saveTouchSamplingRate(rate)
+        postBanner("تم ضبط معدل استجابة اللمس على: ${rate.hz}Hz (${rate.responseMs}ms)")
     }
 
     fun toggleLowEndBoost(enabled: Boolean) {
@@ -1023,8 +1039,28 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
         _fpsHudOverlayEnabled.value = enabled
         if (boosterManager.canDrawOverlays()) {
             startFloatingSidebarOverlay(showFpsHud = enabled)
+            postBanner(
+                if (enabled) "تم إظهار عداد FPS والحرارة العائم فوق الألعاب"
+                else "تم إخفاء عداد FPS العائم"
+            )
         } else if (enabled) {
-            postBanner("يرجى منح صلاحية الظهور فوق التطبيقات لعرض شريط FPS العائم")
+            postBanner("تم إظهار عداد FPS داخل التطبيق — لعرضه فوق الألعاب امنح صلاحية الظهور فوق التطبيقات")
+        } else {
+            postBanner("تم إخفاء عداد FPS")
+        }
+    }
+
+    fun toggleFloatingSidebarOrInApp() {
+        refreshSystemPermissionsAndLists()
+        if (floatingOverlayRunning.value) {
+            stopFloatingSidebarOverlay()
+            postBanner("تم إيقاف الشريط الجانبي العائم فوق الألعاب")
+        } else if (boosterManager.canDrawOverlays()) {
+            startFloatingSidebarOverlay(showFpsHud = _fpsHudOverlayEnabled.value)
+            postBanner("تم تفعيل الشريط الجانبي العائم فوق الألعاب بنجاح!")
+        } else {
+            _edgeGenieExpanded.value = true
+            postBanner("تم فتح الشريط الجانبي داخل التطبيق — لتثبيته فوق الألعاب الخارجية امنح صلاحية الظهور العائم")
         }
     }
 
@@ -1042,6 +1078,7 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
         try {
             app.startService(intent)
         } catch (_: Exception) {
+            postBanner("تعذر تشغيل خدمة الشريط العائم على هذا الجهاز — يعمل الشريط داخل التطبيق")
         }
     }
 
@@ -1080,15 +1117,30 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun updateCrosshairTransform(transform: (CrosshairConfig) -> CrosshairConfig) {
+        val prevEnabled = _crosshairConfig.value.enabled
         val next = transform(_crosshairConfig.value)
         updateAndPersistCrosshair(next)
-        if (next.enabled && boosterManager.canDrawOverlays()) {
-            startFloatingSidebarOverlay(showFpsHud = _fpsHudOverlayEnabled.value)
+        if (next.enabled) {
+            if (boosterManager.canDrawOverlays()) {
+                startFloatingSidebarOverlay(showFpsHud = _fpsHudOverlayEnabled.value)
+                if (!prevEnabled) {
+                    postBanner("تم تفعيل مؤشر التصويب العائم (${next.style.titleAr})")
+                }
+            } else if (!prevEnabled) {
+                postBanner("تم تفعيل معاينة مؤشر التصويب داخل التطبيق — لعرضه فوق الألعاب امنح صلاحية الظهور العائم")
+            }
+        } else if (prevEnabled) {
+            postBanner("تم إيقاف مؤشر التصويب العائم")
         }
     }
 
     fun updateLowEndTransform(transform: (LowEndDeviceConfig) -> LowEndDeviceConfig) {
-        updateAndPersistLowEndConfig(transform(_lowEndConfig.value))
+        val next = transform(_lowEndConfig.value)
+        updateAndPersistLowEndConfig(next)
+    }
+
+    fun showStatusMessage(message: String) {
+        postBanner(message)
     }
 
     fun emitClonedTap(button: com.example.model.ClonedTouchButton, isDown: Boolean) {
@@ -1096,36 +1148,70 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun openOverlayPermissionSettings() {
-        try {
-            val intent = Intent(
+        val app = getApplication<Application>()
+        val candidates = listOf(
+            Intent(
                 android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
-                android.net.Uri.parse("package:${getApplication<Application>().packageName}")
-            ).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                android.net.Uri.parse("package:${app.packageName}")
+            ),
+            Intent(android.provider.Settings.ACTION_MANAGE_OVERLAY_PERMISSION),
+            Intent(
+                android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS,
+                android.net.Uri.parse("package:${app.packageName}")
+            )
+        )
+        for (candidate in candidates) {
+            try {
+                candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (candidate.resolveActivity(app.packageManager) != null) {
+                    app.startActivity(candidate)
+                    postBanner("يرجى تفعيل صلاحية (الظهور فوق التطبيقات) لبرنامج Hassan Games ثم العودة للتطبيق")
+                    return
+                }
+            } catch (_: Exception) {
             }
-            getApplication<Application>().startActivity(intent)
-        } catch (_: Exception) {
         }
+        postBanner("إعدادات الظهور العائم غير مدعومة مباشرة على هذا الجهاز — جميع الأدوات تعمل داخل التطبيق")
     }
 
     fun openAccessibilitySettings() {
-        try {
-            val intent = Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val app = getApplication<Application>()
+        val candidates = listOf(
+            Intent(android.provider.Settings.ACTION_ACCESSIBILITY_SETTINGS),
+            Intent(android.provider.Settings.ACTION_SETTINGS)
+        )
+        for (candidate in candidates) {
+            try {
+                candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (candidate.resolveActivity(app.packageManager) != null) {
+                    app.startActivity(candidate)
+                    postBanner("يرجى تفعيل خدمة إمكانية الوصول لـ Hassan Games لتنفيذ اللمس التلقائي داخل الألعاب")
+                    return
+                }
+            } catch (_: Exception) {
             }
-            getApplication<Application>().startActivity(intent)
-        } catch (_: Exception) {
         }
+        postBanner("تعذر فتح إعدادات إمكانية الوصول تلقائياً — يمكنك تفعيلها من إعدادات الجهاز")
     }
 
     fun openDndPermissionSettings() {
-        try {
-            val intent = Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+        val app = getApplication<Application>()
+        val candidates = listOf(
+            Intent(android.provider.Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS),
+            Intent(android.provider.Settings.ACTION_SETTINGS)
+        )
+        for (candidate in candidates) {
+            try {
+                candidate.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                if (candidate.resolveActivity(app.packageManager) != null) {
+                    app.startActivity(candidate)
+                    postBanner("يرجى منح صلاحية عدم الإزعاج (DND) لحجب الإشعارات المنبثقة أثناء اللعب")
+                    return
+                }
+            } catch (_: Exception) {
             }
-            getApplication<Application>().startActivity(intent)
-        } catch (_: Exception) {
         }
+        postBanner("درع الإشعارات نشط داخل Hassan Games — يمكنك تفعيل عدم الإزعاج من شريط إشعارات هاتفك")
     }
 
     fun startMasterEngine() {

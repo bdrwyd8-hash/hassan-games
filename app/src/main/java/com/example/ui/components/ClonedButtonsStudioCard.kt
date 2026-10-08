@@ -1,6 +1,9 @@
 package com.example.ui.components
 
+import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.graphics.drawable.BitmapDrawable
+import androidx.core.content.ContextCompat
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
@@ -108,10 +111,12 @@ import kotlin.math.roundToInt
 fun ClonedButtonsStudioCard(
     config: ClonedButtonsConfig,
     isAccessibilityRunning: Boolean,
+    canDrawOverlays: Boolean = true,
     onUpdateConfig: ((ClonedButtonsConfig) -> ClonedButtonsConfig) -> Unit,
     onToggleSystemOverlay: () -> Unit,
     onSimulateClonedTap: (ClonedTouchButton, Boolean) -> Unit,
-    onOpenAccessibilitySettings: () -> Unit
+    onOpenAccessibilitySettings: () -> Unit,
+    onOpenOverlayPermissionSettings: () -> Unit = {}
 ) {
     val totalClonedTaps by TriggerEventBus.totalClonedTaps.collectAsState()
     val lastActiveId by TriggerEventBus.lastClonedActiveId.collectAsState()
@@ -189,8 +194,8 @@ fun ClonedButtonsStudioCard(
 
                 Switch(
                     checked = config.enabled,
-                    onCheckedChange = { enabled ->
-                        onUpdateConfig { it.copy(enabled = enabled) }
+                    onCheckedChange = {
+                        onToggleSystemOverlay()
                     },
                     modifier = Modifier.testTag("cloned_buttons_master_switch"),
                     colors = SwitchDefaults.colors(
@@ -573,7 +578,8 @@ fun ClonedButtonsStudioCard(
                         .clickable {
                             onUpdateConfig { it.copy(buttons = ClonedButtonsConfig.defaultClonedButtons()) }
                         }
-                        .padding(horizontal = 6.dp, vertical = 2.dp),
+                        .padding(horizontal = 6.dp, vertical = 2.dp)
+                        .testTag("reset_cloned_positions_btn"),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Icon(
@@ -725,7 +731,8 @@ fun ClonedButtonsStudioCard(
                                             )
                                         }
                                     }
-                                    .padding(vertical = 6.dp, horizontal = 4.dp),
+                                    .padding(vertical = 6.dp, horizontal = 4.dp)
+                                    .testTag("cloned_mode_chip_${mode.name}"),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
@@ -810,11 +817,39 @@ fun ClonedButtonsStudioCard(
                 )
             }
 
+            if (!canDrawOverlays) {
+                Spacer(modifier = Modifier.height(8.dp))
+                OutlinedButton(
+                    onClick = onOpenOverlayPermissionSettings,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("request_overlay_permission_cloned_btn"),
+                    shape = RoundedCornerShape(8.dp),
+                    border = BorderStroke(1.dp, CyberCyan)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Layers,
+                        contentDescription = null,
+                        tint = CyberCyan,
+                        modifier = Modifier.size(16.dp)
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text(
+                        text = "منح صلاحية الظهور فوق التطبيقات لإظهار الأزرار فوق الألعاب الخارجية",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = CyberCyan,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+            }
+
             if (!isAccessibilityRunning) {
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = onOpenAccessibilitySettings,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("request_accessibility_permission_btn"),
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, MoltenAmber)
                 ) {
@@ -943,6 +978,7 @@ fun GameBoxEnvironmentCard(
                         onUpdateLowEnd { it.copy(wiFiPriorityEnabled = v) }
                         onTestNetworkPing()
                     },
+                    modifier = Modifier.testTag("wifi_priority_switch"),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = ObsidianBlack,
                         checkedTrackColor = CyberCyan
@@ -984,6 +1020,7 @@ fun GameBoxEnvironmentCard(
                     Switch(
                         checked = lowEndConfig.brightnessLockEnabled,
                         onCheckedChange = { v -> onUpdateLowEnd { it.copy(brightnessLockEnabled = v) } },
+                        modifier = Modifier.testTag("brightness_lock_switch"),
                         colors = SwitchDefaults.colors(
                             checkedThumbColor = ObsidianBlack,
                             checkedTrackColor = MoltenAmber
@@ -1042,6 +1079,7 @@ fun GameBoxEnvironmentCard(
                 Switch(
                     checked = lowEndConfig.touchEdgeRejectEnabled,
                     onCheckedChange = { v -> onUpdateLowEnd { it.copy(touchEdgeRejectEnabled = v) } },
+                    modifier = Modifier.testTag("edge_touch_reject_switch"),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = ObsidianBlack,
                         checkedTrackColor = MatrixGreen
@@ -1054,13 +1092,20 @@ fun GameBoxEnvironmentCard(
 
 /**
  * Custom App Icon & Logo Studio Card.
+ * Safely decodes any Android Drawable (raster PNG/JPG, VectorDrawable, LayerDrawable, or AdaptiveIconDrawable)
+ * into an ImageBitmap so it never throws IllegalArgumentException in Compose painterResource.
  */
 @Composable
 fun CustomAppIconStudioCard(
-    defaultDrawableRes: Int
+    defaultDrawableRes: Int,
+    onShowMessage: (String) -> Unit = {}
 ) {
     val context = LocalContext.current
     var customBitmap by remember { mutableStateOf<ImageBitmap?>(null) }
+
+    val fallbackIconBitmap = remember(defaultDrawableRes) {
+        loadSafeDrawableAsImageBitmap(context, defaultDrawableRes)
+    }
 
     val photoPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.PickVisualMedia()
@@ -1071,9 +1116,11 @@ fun CustomAppIconStudioCard(
                     val bmp = BitmapFactory.decodeStream(stream)
                     if (bmp != null) {
                         customBitmap = bmp.asImageBitmap()
+                        onShowMessage("تم تحديث صورة شعار Hassan Games بنجاح!")
                     }
                 }
             } catch (_: Exception) {
+                onShowMessage("تعذر قراءة الصورة المختارة — يرجى اختيار صورة أخرى")
             }
         }
     }
@@ -1100,20 +1147,20 @@ fun CustomAppIconStudioCard(
                     .border(1.5.dp, MoltenAmber, RoundedCornerShape(16.dp)),
                 contentAlignment = Alignment.Center
             ) {
-                val bmp = customBitmap
+                val bmp = customBitmap ?: fallbackIconBitmap
                 if (bmp != null) {
                     Image(
                         bitmap = bmp,
-                        contentDescription = "أيقونة البرنامج المخصصة",
+                        contentDescription = "أيقونة البرنامج الحالية",
                         contentScale = ContentScale.Crop,
                         modifier = Modifier.fillMaxSize()
                     )
                 } else {
-                    Image(
-                        painter = painterResource(id = defaultDrawableRes),
-                        contentDescription = "أيقونة البرنامج الحالية",
-                        contentScale = ContentScale.Crop,
-                        modifier = Modifier.fillMaxSize()
+                    Icon(
+                        imageVector = Icons.Default.Shield,
+                        contentDescription = "أيقونة البرنامج الافتراضية",
+                        tint = MoltenAmber,
+                        modifier = Modifier.size(32.dp)
                     )
                 }
             }
@@ -1136,9 +1183,13 @@ fun CustomAppIconStudioCard(
                 Spacer(modifier = Modifier.height(8.dp))
                 OutlinedButton(
                     onClick = {
-                        photoPickerLauncher.launch(
-                            PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                        )
+                        try {
+                            photoPickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        } catch (_: Exception) {
+                            onShowMessage("منتقي الصور غير متاح على هذا الجهاز حالياً")
+                        }
                     },
                     modifier = Modifier.testTag("pick_custom_logo_btn"),
                     shape = RoundedCornerShape(8.dp),
@@ -1161,5 +1212,30 @@ fun CustomAppIconStudioCard(
                 }
             }
         }
+    }
+}
+
+private fun loadSafeDrawableAsImageBitmap(
+    context: android.content.Context,
+    resId: Int
+): ImageBitmap? {
+    return try {
+        val directBmp = BitmapFactory.decodeResource(context.resources, resId)
+        if (directBmp != null) {
+            return directBmp.asImageBitmap()
+        }
+        val drawable = ContextCompat.getDrawable(context, resId) ?: return null
+        if (drawable is BitmapDrawable && drawable.bitmap != null) {
+            return drawable.bitmap.asImageBitmap()
+        }
+        val w = drawable.intrinsicWidth.coerceIn(64, 256)
+        val h = drawable.intrinsicHeight.coerceIn(64, 256)
+        val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+        val canvas = android.graphics.Canvas(bmp)
+        drawable.setBounds(0, 0, canvas.width, canvas.height)
+        drawable.draw(canvas)
+        bmp.asImageBitmap()
+    } catch (_: Exception) {
+        null
     }
 }

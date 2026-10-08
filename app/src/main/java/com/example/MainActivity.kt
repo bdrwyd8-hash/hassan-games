@@ -430,11 +430,7 @@ fun HassanGamesRootApp(
                             onUpdateCrosshair = { viewModel.updateCrosshairTransform(it) },
                             onUpdateClonedButtons = { viewModel.updateClonedButtonsTransform(it) },
                             onToggleClonedButtonsOverlay = {
-                                if (!overlayPermissionGranted) {
-                                    viewModel.openOverlayPermissionSettings()
-                                } else {
-                                    viewModel.toggleClonedButtonsMaster(!clonedButtonsConfig.enabled)
-                                }
+                                viewModel.toggleClonedButtonsMaster(!clonedButtonsConfig.enabled)
                             },
                             onSimulateClonedTap = { btn, isDown ->
                                 viewModel.emitClonedTap(btn, isDown)
@@ -448,16 +444,11 @@ fun HassanGamesRootApp(
                             onApplyAdvisorPreset = { viewModel.applyAdvisorRecommendationToEngine() },
                             onToggleFpsPill = { viewModel.toggleFpsHudOverlay(it) },
                             onLaunchSystemFloatingSidebar = {
-                                if (floatingOverlayRunning) {
-                                    viewModel.stopFloatingSidebarOverlay()
-                                } else if (overlayPermissionGranted) {
-                                    viewModel.startFloatingSidebarOverlay()
-                                } else {
-                                    viewModel.openOverlayPermissionSettings()
-                                }
+                                viewModel.toggleFloatingSidebarOrInApp()
                             },
                             onOpenOverlayPermissionSettings = { viewModel.openOverlayPermissionSettings() },
-                            onTestNetworkPing = { viewModel.testNetworkPingNow() }
+                            onTestNetworkPing = { viewModel.testNetworkPingNow() },
+                            onShowMessage = { viewModel.showStatusMessage(it) }
                         )
                     }
                 }
@@ -492,8 +483,10 @@ fun HassanGamesRootApp(
             onActivateSystemFloatingBar = {
                 if (floatingOverlayRunning) {
                     viewModel.stopFloatingSidebarOverlay()
+                    viewModel.showStatusMessage("تم إيقاف الشريط العائم الخارجي")
                 } else if (overlayPermissionGranted) {
                     viewModel.startFloatingSidebarOverlay()
+                    viewModel.showStatusMessage("تم تفعيل الشريط العائم فوق جميع الألعاب!")
                 } else {
                     viewModel.openOverlayPermissionSettings()
                 }

@@ -1,7 +1,14 @@
 package com.example
 
 import android.app.Application
+import androidx.compose.ui.test.assertIsDisplayed
+import androidx.compose.ui.test.junit4.createAndroidComposeRule
+import androidx.compose.ui.test.onNodeWithTag
+import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.test.core.app.ApplicationProvider
+import org.junit.Rule
+import org.robolectric.shadows.ShadowSettings
 import com.example.data.HardwareTelemetryEngine
 import com.example.data.RedCorePreferencesRepository
 import com.example.data.SystemBoosterManager
@@ -29,6 +36,9 @@ import org.robolectric.annotation.Config
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
 class ExampleRobolectricTest {
+
+    @get:Rule
+    val composeTestRule = createAndroidComposeRule<MainActivity>()
 
     private lateinit var app: Application
     private lateinit var prefsRepo: RedCorePreferencesRepository
@@ -197,5 +207,130 @@ class ExampleRobolectricTest {
         assertFalse(TriggerEventBus.isMasterEngineRunning.value)
         assertFalse(viewModel.clonedButtonsConfig.value.enabled)
         assertFalse(viewModel.crosshairConfig.value.enabled)
+    }
+
+    @Test
+    fun gamingToolsTab_openAndClickAllTools_withoutPermissions_neverCrashesAndShowsClearMessage() {
+        ShadowSettings.setCanDrawOverlays(false)
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("nav_tab_ARSENAL_GFX").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("arsenal_gfx_screen").assertIsDisplayed()
+
+        // 1. Cloned Touch Buttons Studio (C1-C4)
+        composeTestRule.onNodeWithTag("cloned_buttons_master_switch").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("cloned_mode_lock_play_btn").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("cloned_mode_edit_btn").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("select_cloned_slot_C2").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("select_cloned_slot_C3").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("select_cloned_slot_C4").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("select_cloned_slot_C1").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("cloned_mode_chip_TURBO_HOLD").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("cloned_mode_chip_AUTO_LOCK").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("cloned_mode_chip_SINGLE_TAP").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("reset_cloned_positions_btn").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("launch_cloned_buttons_overlay_btn").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // 2. Tactical Crosshair Studio
+        composeTestRule.onNodeWithTag("crosshair_master_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_style_RED_DOT").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_style_SNIPER_CIRCLE").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_style_CHEVRON_PRO").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_style_TACTICAL_CROSS").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_color_1").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_color_2").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_reset_offset_btn").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // 3. Auto Settings Advisor
+        composeTestRule.onNodeWithTag("advisor_mode_best_performance").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("advisor_mode_best_visual_quality").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("advisor_mode_balanced").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("apply_advisor_recommendations_button").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // 4. GFX & Touch Sampling Tuner + Floating Sidebar + FPS Counter
+        composeTestRule.onNodeWithTag("gfx_res_RES_720P").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("gfx_res_RES_900P").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("gfx_res_RES_2K").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("gfx_res_RES_1080P").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("touch_rate_HZ_240").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("touch_rate_HZ_960").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("touch_rate_HZ_480").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("low_end_stabilizer_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("gfx_launch_sidebar_btn").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("gfx_toggle_fps_pill_btn").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // 5. Smart Thermal Mode
+        composeTestRule.onNodeWithTag("thermal_mode_eco_stability").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("thermal_mode_off").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("thermal_mode_auto_adaptive").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // 6. Gaming Environment & Network
+        composeTestRule.onNodeWithTag("wifi_priority_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("brightness_lock_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("edge_touch_reject_switch").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // 7. Custom App Icon Studio (previously caused Fatal IllegalArgumentException crash!)
+        composeTestRule.onNodeWithTag("custom_app_icon_studio_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.onNodeWithTag("pick_custom_logo_btn").performScrollTo().assertIsDisplayed()
+        composeTestRule.waitForIdle()
+    }
+
+    @Test
+    fun gamingToolsTab_navigationTransitionsAndOverlayPermissionGranted_worksCleanly() {
+        ShadowSettings.setCanDrawOverlays(true)
+
+        composeTestRule.waitForIdle()
+        // Navigate across all tabs and back to Arsenal GFX multiple times
+        composeTestRule.onNodeWithTag("nav_tab_ARSENAL_GFX").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("arsenal_gfx_screen").assertIsDisplayed()
+
+        // Toggle tools On with overlay permission granted
+        composeTestRule.onNodeWithTag("cloned_buttons_master_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_master_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("gfx_toggle_fps_pill_btn").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+
+        // Switch to Command Center -> RAM Booster -> My Games -> back to Arsenal GFX
+        composeTestRule.onNodeWithTag("nav_tab_COMMAND_CENTER").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("nav_tab_RAM_BOOSTER").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("nav_tab_GAME_SPACE").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("nav_tab_ARSENAL_GFX").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("arsenal_gfx_screen").assertIsDisplayed()
+
+        // Toggle tools Off and On again after returning
+        composeTestRule.onNodeWithTag("cloned_buttons_master_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_master_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("gfx_toggle_fps_pill_btn").performScrollTo().performClick()
+        composeTestRule.waitForIdle()
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w800dp-h400dp-land")
+    fun gamingToolsTab_landscapeAndTabletOrientation_rendersAndInteractsWithoutCrash() {
+        ShadowSettings.setCanDrawOverlays(false)
+
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("nav_tab_ARSENAL_GFX").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("arsenal_gfx_screen").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("cloned_buttons_master_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("crosshair_master_switch").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("apply_advisor_recommendations_button").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("custom_app_icon_studio_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.waitForIdle()
     }
 }

@@ -112,7 +112,8 @@ fun ArsenalGfxScreen(
     onToggleFpsPill: (Boolean) -> Unit,
     onLaunchSystemFloatingSidebar: () -> Unit,
     onOpenOverlayPermissionSettings: () -> Unit,
-    onTestNetworkPing: () -> Unit
+    onTestNetworkPing: () -> Unit,
+    onShowMessage: (String) -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -126,10 +127,12 @@ fun ArsenalGfxScreen(
         ClonedButtonsStudioCard(
             config = clonedButtonsConfig,
             isAccessibilityRunning = isAccessibilityRunning,
+            canDrawOverlays = canDrawOverlays,
             onUpdateConfig = onUpdateClonedButtons,
             onToggleSystemOverlay = onToggleClonedButtonsOverlay,
             onSimulateClonedTap = onSimulateClonedTap,
-            onOpenAccessibilitySettings = onOpenAccessibilitySettings
+            onOpenAccessibilitySettings = onOpenAccessibilitySettings,
+            onOpenOverlayPermissionSettings = onOpenOverlayPermissionSettings
         )
 
         // 2. Tactical Crosshair Studio Card
@@ -176,7 +179,8 @@ fun ArsenalGfxScreen(
 
         // 7. Custom App Icon Studio Card
         CustomAppIconStudioCard(
-            defaultDrawableRes = R.drawable.ic_launcher_foreground
+            defaultDrawableRes = R.drawable.img_launcher_icon_1791322202008,
+            onShowMessage = onShowMessage
         )
 
         Spacer(modifier = Modifier.height(24.dp))
@@ -305,7 +309,8 @@ private fun CrosshairStudioCard(
                                 RoundedCornerShape(8.dp)
                             )
                             .clickable { onUpdateCrosshair { it.copy(style = style) } }
-                            .padding(vertical = 8.dp, horizontal = 4.dp),
+                            .padding(vertical = 8.dp, horizontal = 4.dp)
+                            .testTag("crosshair_style_${style.name}"),
                         contentAlignment = Alignment.Center
                     ) {
                         Text(
@@ -331,7 +336,7 @@ private fun CrosshairStudioCard(
                     color = SilverMist
                 )
                 Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                    colorOptions.forEach { (hex, name) ->
+                    colorOptions.forEachIndexed { idx, (hex, _) ->
                         val selected = config.colorHex == hex
                         Box(
                             modifier = Modifier
@@ -344,6 +349,7 @@ private fun CrosshairStudioCard(
                                     shape = CircleShape
                                 )
                                 .clickable { onUpdateCrosshair { it.copy(colorHex = hex) } }
+                                .testTag("crosshair_color_$idx")
                         )
                     }
                 }
@@ -393,6 +399,7 @@ private fun CrosshairStudioCard(
                     onClick = {
                         onUpdateCrosshair { it.copy(offsetXDp = 0f, offsetYDp = 0f) }
                     },
+                    modifier = Modifier.testTag("crosshair_reset_offset_btn"),
                     contentPadding = PaddingValues(horizontal = 10.dp, vertical = 4.dp),
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, CarbonBorder)
@@ -415,7 +422,9 @@ private fun CrosshairStudioCard(
             if (!canDrawOverlays) {
                 OutlinedButton(
                     onClick = onOpenOverlayPermissionSettings,
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag("crosshair_overlay_perm_btn"),
                     shape = RoundedCornerShape(8.dp),
                     border = BorderStroke(1.dp, MoltenAmber)
                 ) {
@@ -507,7 +516,8 @@ private fun GfxAndTouchTunerCard(
                                 RoundedCornerShape(8.dp)
                             )
                             .clickable { onSelectResolution(preset) }
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                            .testTag("gfx_res_${preset.name}"),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -561,7 +571,8 @@ private fun GfxAndTouchTunerCard(
                                 RoundedCornerShape(8.dp)
                             )
                             .clickable { onSelectTouchRate(rate) }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 8.dp)
+                            .testTag("touch_rate_${rate.name}"),
                         contentAlignment = Alignment.Center
                     ) {
                         Column(horizontalAlignment = Alignment.CenterHorizontally) {
@@ -630,6 +641,7 @@ private fun GfxAndTouchTunerCard(
                     onCheckedChange = { v ->
                         onUpdateLowEnd { it.copy(lowEndBoostEnabled = v, disableHeavyShaders = v) }
                     },
+                    modifier = Modifier.testTag("low_end_stabilizer_switch"),
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = ObsidianBlack,
                         checkedTrackColor = MoltenAmber
@@ -646,7 +658,8 @@ private fun GfxAndTouchTunerCard(
                     onClick = onLaunchSystemFloatingSidebar,
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp),
+                        .height(42.dp)
+                        .testTag("gfx_launch_sidebar_btn"),
                     shape = CutCornerShape(8.dp),
                     colors = ButtonDefaults.buttonColors(
                         containerColor = if (isSystemFloatingBarRunning) MatrixGreen else CyberCyan,
@@ -670,7 +683,8 @@ private fun GfxAndTouchTunerCard(
                     onClick = { onToggleFpsPill(!fpsPillVisible) },
                     modifier = Modifier
                         .weight(1f)
-                        .height(42.dp),
+                        .height(42.dp)
+                        .testTag("gfx_toggle_fps_pill_btn"),
                     shape = CutCornerShape(8.dp),
                     border = BorderStroke(1.dp, if (fpsPillVisible) MatrixGreen else CarbonBorder)
                 ) {

@@ -333,8 +333,10 @@ class FloatingGameSidebarService : Service() {
                     telemetryEngine = telemetryEngine,
                     onDragDelta = { dx, dy ->
                         fpsHudParams?.let { lp ->
-                            lp.x = (lp.x + dx.roundToInt()).coerceIn(0, metrics.widthPixels - 140)
-                            lp.y = (lp.y + dy.roundToInt()).coerceIn(0, metrics.heightPixels - 80)
+                            val maxX = (metrics.widthPixels - 140).coerceAtLeast(0)
+                            val maxY = (metrics.heightPixels - 80).coerceAtLeast(0)
+                            lp.x = (lp.x + dx.roundToInt()).coerceIn(0, maxX)
+                            lp.y = (lp.y + dy.roundToInt()).coerceIn(0, maxY)
                             safeUpdateViewLayout(this, lp)
                         }
                     },
@@ -464,6 +466,8 @@ class FloatingGameSidebarService : Service() {
 
         for (btn in buttons.filter { it.enabled }) {
             val sizePx = (btn.buttonSizeDp * density).roundToInt().coerceIn(96, 260)
+            val maxSrcX = (screenW - sizePx).coerceAtLeast(0)
+            val maxSrcY = (screenH - sizePx).coerceAtLeast(0)
             val existing = clonedOverlayHolders[btn.id]
 
             if (existing == null) {
@@ -476,8 +480,8 @@ class FloatingGameSidebarService : Service() {
                     PixelFormat.TRANSLUCENT
                 ).apply {
                     gravity = Gravity.TOP or Gravity.START
-                    x = (btn.sourceX * screenW - sizePx / 2f).roundToInt().coerceIn(0, screenW - sizePx)
-                    y = (btn.sourceY * screenH - sizePx / 2f).roundToInt().coerceIn(0, screenH - sizePx)
+                    x = (btn.sourceX * screenW - sizePx / 2f).roundToInt().coerceIn(0, maxSrcX)
+                    y = (btn.sourceY * screenH - sizePx / 2f).roundToInt().coerceIn(0, maxSrcY)
                 }
 
                 val srcOwner = OverlayComposeLifecycleOwner().apply { onCreate() }
@@ -492,8 +496,8 @@ class FloatingGameSidebarService : Service() {
                             button = liveBtn,
                             editLocked = liveConfig.editPositionsLocked,
                             onDragDelta = { dx, dy ->
-                                val newX = (srcParams.x + dx.roundToInt()).coerceIn(0, screenW - sizePx)
-                                val newY = (srcParams.y + dy.roundToInt()).coerceIn(0, screenH - sizePx)
+                                val newX = (srcParams.x + dx.roundToInt()).coerceIn(0, maxSrcX)
+                                val newY = (srcParams.y + dy.roundToInt()).coerceIn(0, maxSrcY)
                                 srcParams.x = newX
                                 srcParams.y = newY
                                 safeUpdateViewLayout(this, srcParams)
@@ -527,14 +531,16 @@ class FloatingGameSidebarService : Service() {
                 existing.sourceParams.width = sizePx
                 existing.sourceParams.height = sizePx
                 existing.sourceParams.x =
-                    (btn.sourceX * screenW - sizePx / 2f).roundToInt().coerceIn(0, screenW - sizePx)
+                    (btn.sourceX * screenW - sizePx / 2f).roundToInt().coerceIn(0, maxSrcX)
                 existing.sourceParams.y =
-                    (btn.sourceY * screenH - sizePx / 2f).roundToInt().coerceIn(0, screenH - sizePx)
+                    (btn.sourceY * screenH - sizePx / 2f).roundToInt().coerceIn(0, maxSrcY)
                 safeUpdateViewLayout(existing.sourceView, existing.sourceParams)
             }
 
             val holder = clonedOverlayHolders[btn.id] ?: continue
             val targetPinPx = (44 * density).roundToInt()
+            val maxTgtX = (screenW - targetPinPx).coerceAtLeast(0)
+            val maxTgtY = (screenH - targetPinPx).coerceAtLeast(0)
             if (showTargetPins) {
                 if (holder.targetView == null) {
                     val tgtParams = WindowManager.LayoutParams(
@@ -547,9 +553,9 @@ class FloatingGameSidebarService : Service() {
                     ).apply {
                         gravity = Gravity.TOP or Gravity.START
                         x = (btn.targetX * screenW - targetPinPx / 2f).roundToInt()
-                            .coerceIn(0, screenW - targetPinPx)
+                            .coerceIn(0, maxTgtX)
                         y = (btn.targetY * screenH - targetPinPx / 2f).roundToInt()
-                            .coerceIn(0, screenH - targetPinPx)
+                            .coerceIn(0, maxTgtY)
                     }
                     val tgtOwner = OverlayComposeLifecycleOwner().apply { onCreate() }
                     val tgtView = ComposeView(this).apply {
@@ -562,8 +568,8 @@ class FloatingGameSidebarService : Service() {
                             FloatingClonedTargetPin(
                                 button = liveBtn,
                                 onDragDelta = { dx, dy ->
-                                    val newX = (tgtParams.x + dx.roundToInt()).coerceIn(0, screenW - targetPinPx)
-                                    val newY = (tgtParams.y + dy.roundToInt()).coerceIn(0, screenH - targetPinPx)
+                                    val newX = (tgtParams.x + dx.roundToInt()).coerceIn(0, maxTgtX)
+                                    val newY = (tgtParams.y + dy.roundToInt()).coerceIn(0, maxTgtY)
                                     tgtParams.x = newX
                                     tgtParams.y = newY
                                     safeUpdateViewLayout(this, tgtParams)
@@ -591,9 +597,9 @@ class FloatingGameSidebarService : Service() {
                 } else {
                     holder.targetParams?.let { tp ->
                         tp.x = (btn.targetX * screenW - targetPinPx / 2f).roundToInt()
-                            .coerceIn(0, screenW - targetPinPx)
+                            .coerceIn(0, maxTgtX)
                         tp.y = (btn.targetY * screenH - targetPinPx / 2f).roundToInt()
-                            .coerceIn(0, screenH - targetPinPx)
+                            .coerceIn(0, maxTgtY)
                         holder.targetView?.let { tv -> safeUpdateViewLayout(tv, tp) }
                     }
                 }
@@ -1277,9 +1283,16 @@ private class OverlayComposeLifecycleOwner :
     }
 
     fun onDestroy() {
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
-        lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+        try {
+            if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.STARTED)) {
+                lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_PAUSE)
+                lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_STOP)
+            }
+            if (lifecycleRegistry.currentState.isAtLeast(Lifecycle.State.CREATED)) {
+                lifecycleRegistry.handleLifecycleEvent(Lifecycle.Event.ON_DESTROY)
+            }
+        } catch (_: Exception) {
+        }
         store.clear()
     }
 }
