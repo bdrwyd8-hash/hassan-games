@@ -9,8 +9,13 @@ import com.example.model.ClonedTouchButton
 import com.example.model.CrosshairConfig
 import com.example.model.CrosshairStyle
 import com.example.model.GameSpaceProfile
+import com.example.model.GamingSessionReport
 import com.example.model.GfxResolutionPreset
+import com.example.model.HudShortcutTool
 import com.example.model.LowEndDeviceConfig
+import com.example.model.NetworkCheckReport
+import com.example.model.NetworkConnectionType
+import com.example.model.NetworkStabilityGrade
 import com.example.model.PerformanceMode
 import com.example.model.SmartThermalMode
 import com.example.model.TouchSamplingRate
@@ -337,6 +342,182 @@ class RedCorePreferencesRepository(context: Context) {
         return ts to mode
     }
 
+    fun saveNetworkTestHistory(reports: List<NetworkCheckReport>) {
+        val serialized = reports.take(15).joinToString("||") { r ->
+            listOf(
+                r.id,
+                r.timestampMs,
+                r.connectionType.name,
+                r.networkSubtypeLabel.replace("|", " ").replace(";", " "),
+                r.isConnected,
+                r.testedServerName.replace("|", " ").replace(";", " "),
+                r.testedServerHost.replace("|", " ").replace(";", " "),
+                r.avgPingMs ?: -1,
+                r.minPingMs ?: -1,
+                r.maxPingMs ?: -1,
+                r.jitterMs ?: -1,
+                r.packetLossPercent ?: -1,
+                r.packetLossSupported,
+                r.spikeDetected,
+                r.disconnectsRecorded,
+                r.stabilityScore,
+                r.stabilityGrade.name,
+                r.aiNetworkSummaryAr.replace("|", " ").replace(";", " ")
+            ).joinToString(";;")
+        }
+        prefs.edit { putString(KEY_NET_TEST_HISTORY, serialized) }
+    }
+
+    fun loadNetworkTestHistory(): List<NetworkCheckReport> {
+        val raw = prefs.getString(KEY_NET_TEST_HISTORY, null) ?: return emptyList()
+        if (raw.isBlank()) return emptyList()
+        return raw.split("||").mapNotNull { entry ->
+            val p = entry.split(";;")
+            if (p.size >= 18) {
+                val id = p[0]
+                val ts = p[1].toLongOrNull() ?: 0L
+                val connType = NetworkConnectionType.entries.firstOrNull { it.name == p[2] }
+                    ?: NetworkConnectionType.WIFI
+                val subtype = p[3]
+                val connected = p[4].toBooleanStrictOrNull() ?: true
+                val serverName = p[5]
+                val serverHost = p[6]
+                val avg = p[7].toIntOrNull()?.takeIf { it >= 0 }
+                val min = p[8].toIntOrNull()?.takeIf { it >= 0 }
+                val max = p[9].toIntOrNull()?.takeIf { it >= 0 }
+                val jitter = p[10].toIntOrNull()?.takeIf { it >= 0 }
+                val loss = p[11].toIntOrNull()?.takeIf { it >= 0 }
+                val lossSupp = p[12].toBooleanStrictOrNull() ?: true
+                val spike = p[13].toBooleanStrictOrNull() ?: false
+                val disc = p[14].toIntOrNull() ?: 0
+                val score = p[15].toIntOrNull() ?: 80
+                val grade = NetworkStabilityGrade.entries.firstOrNull { it.name == p[16] }
+                    ?: NetworkStabilityGrade.STABLE
+                val aiSummary = p[17]
+
+                NetworkCheckReport(
+                    id = id,
+                    timestampMs = ts,
+                    connectionType = connType,
+                    networkSubtypeLabel = subtype,
+                    isConnected = connected,
+                    testedServerName = serverName,
+                    testedServerHost = serverHost,
+                    avgPingMs = avg,
+                    minPingMs = min,
+                    maxPingMs = max,
+                    jitterMs = jitter,
+                    packetLossPercent = loss,
+                    packetLossSupported = lossSupp,
+                    spikeDetected = spike,
+                    disconnectsRecorded = disc,
+                    stabilityScore = score,
+                    stabilityGrade = grade,
+                    pingSamplesMs = listOfNotNull(min, avg, max),
+                    detectedIssuesAr = emptyList(),
+                    smartRecommendationsAr = emptyList(),
+                    pingDifferenceExplanationAr = "يقيس الفحص سرعة الوصول لبوابة الاختبار القياسية؛ قد يختلف بنق خادم اللعبة بحسب موقعه الجغرافي.",
+                    endpointComparisons = emptyList(),
+                    aiNetworkSummaryAr = aiSummary
+                )
+            } else {
+                null
+            }
+        }
+    }
+
+    fun clearNetworkTestHistory() {
+        prefs.edit { remove(KEY_NET_TEST_HISTORY) }
+    }
+
+    fun saveSessionReports(reports: List<GamingSessionReport>) {
+        val serialized = reports.take(10).joinToString("||") { r ->
+            listOf(
+                r.id,
+                r.gameTitle.replace("|", " ").replace(";", " "),
+                r.packageName,
+                r.startTimeMs,
+                r.endTimeMs,
+                r.durationMinutes,
+                r.durationFormattedAr.replace("|", " ").replace(";", " "),
+                r.avgPingMs ?: -1,
+                r.minPingMs ?: -1,
+                r.maxPingMs ?: -1,
+                r.jitterMs ?: -1,
+                r.stabilityLabelAr.replace("|", " ").replace(";", " "),
+                r.disconnectsCount,
+                r.networkTypeLabelAr.replace("|", " ").replace(";", " "),
+                r.batteryTempStartC,
+                r.batteryTempEndC,
+                r.ramAvailableStartMb,
+                r.ramAvailableEndMb,
+                r.batteryPercentEnd,
+                r.appliedPerformanceMode.name,
+                r.sufficientEvidenceForLagCause,
+                r.measuredFactsAr.joinToString("##") { it.replace("|", " ").replace(";", " ") },
+                r.aiNextSessionRecommendationsAr.joinToString("##") { it.replace("|", " ").replace(";", " ") }
+            ).joinToString(";;")
+        }
+        prefs.edit { putString(KEY_SESSION_REPORTS, serialized) }
+    }
+
+    fun loadSessionReports(): List<GamingSessionReport> {
+        val raw = prefs.getString(KEY_SESSION_REPORTS, null) ?: return emptyList()
+        if (raw.isBlank()) return emptyList()
+        return raw.split("||").mapNotNull { entry ->
+            val p = entry.split(";;")
+            if (p.size >= 23) {
+                GamingSessionReport(
+                    id = p[0],
+                    gameTitle = p[1],
+                    packageName = p[2],
+                    startTimeMs = p[3].toLongOrNull() ?: 0L,
+                    endTimeMs = p[4].toLongOrNull() ?: 0L,
+                    durationMinutes = p[5].toIntOrNull() ?: 1,
+                    durationFormattedAr = p[6],
+                    avgPingMs = p[7].toIntOrNull()?.takeIf { it >= 0 },
+                    minPingMs = p[8].toIntOrNull()?.takeIf { it >= 0 },
+                    maxPingMs = p[9].toIntOrNull()?.takeIf { it >= 0 },
+                    jitterMs = p[10].toIntOrNull()?.takeIf { it >= 0 },
+                    stabilityLabelAr = p[11],
+                    disconnectsCount = p[12].toIntOrNull() ?: 0,
+                    networkTypeLabelAr = p[13],
+                    batteryTempStartC = p[14].toFloatOrNull() ?: 34f,
+                    batteryTempEndC = p[15].toFloatOrNull() ?: 35f,
+                    ramAvailableStartMb = p[16].toLongOrNull() ?: 2000L,
+                    ramAvailableEndMb = p[17].toLongOrNull() ?: 2100L,
+                    batteryPercentEnd = p[18].toIntOrNull() ?: 80,
+                    appliedPerformanceMode = PerformanceMode.entries.firstOrNull { it.name == p[19] }
+                        ?: PerformanceMode.PERFORMANCE,
+                    sufficientEvidenceForLagCause = p[20].toBooleanStrictOrNull() ?: false,
+                    measuredFactsAr = p[21].split("##").filter { it.isNotBlank() },
+                    aiNextSessionRecommendationsAr = p[22].split("##").filter { it.isNotBlank() }
+                )
+            } else {
+                null
+            }
+        }
+    }
+
+    fun clearSessionReports() {
+        prefs.edit { remove(KEY_SESSION_REPORTS) }
+    }
+
+    fun saveHudVisibleTools(tools: Set<HudShortcutTool>) {
+        prefs.edit {
+            putStringSet(KEY_HUD_VISIBLE_TOOLS, tools.map { it.name }.toSet())
+        }
+    }
+
+    fun loadHudVisibleTools(): Set<HudShortcutTool> {
+        val raw = prefs.getStringSet(KEY_HUD_VISIBLE_TOOLS, null)
+            ?: return HudShortcutTool.entries.toSet()
+        val parsed = raw.mapNotNull { name ->
+            HudShortcutTool.entries.firstOrNull { it.name == name }
+        }.toSet()
+        return if (parsed.isEmpty()) HudShortcutTool.entries.toSet() else parsed
+    }
+
     companion object {
         private const val KEY_PERF_MODE = "key_perf_mode"
         private const val KEY_ADVISOR_PRESET_MODE = "key_advisor_preset_mode"
@@ -378,5 +559,9 @@ class RedCorePreferencesRepository(context: Context) {
         private const val KEY_LAST_GAME_PKG = "key_last_game_pkg"
         private const val KEY_LAST_GAME_TIME = "key_last_game_time"
         private const val KEY_LAST_GAME_MODE = "key_last_game_mode"
+
+        private const val KEY_NET_TEST_HISTORY = "key_net_test_history_v1"
+        private const val KEY_SESSION_REPORTS = "key_session_reports_v1"
+        private const val KEY_HUD_VISIBLE_TOOLS = "key_hud_visible_tools_v1"
     }
 }

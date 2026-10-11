@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.Psychology
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SportsEsports
 import androidx.compose.material.icons.filled.Tune
@@ -54,18 +55,19 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
-import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import com.example.ui.components.EdgeSwipeGameGenieOverlay
 import com.example.ui.components.RedCoreTopStatusBar
 import com.example.ui.screens.ArsenalGfxScreen
 import com.example.ui.screens.CommandCenterScreen
 import com.example.ui.screens.GameSpaceLobbyScreen
+import com.example.ui.screens.HassanAiScreen
 import com.example.ui.screens.RamBoosterScreen
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
@@ -153,12 +155,46 @@ fun HassanGamesRootApp(
     val floatingOverlayRunning by viewModel.floatingOverlayRunning.collectAsState()
     val statusBannerMessage by viewModel.statusBannerMessage.collectAsState()
     val isMasterEngineRunning by viewModel.isMasterEngineRunning.collectAsState()
+    val activeSessionGamePackage by viewModel.activeSessionGamePackage.collectAsState()
+    val latestNetworkReport by viewModel.latestNetworkReport.collectAsState()
+    val networkTestHistory by viewModel.networkTestHistory.collectAsState()
+    val isCheckingNetwork by viewModel.isCheckingNetwork.collectAsState()
+    val latestRouteReport by viewModel.latestRouteReport.collectAsState()
+    val isCheckingRoutes by viewModel.isCheckingRoutes.collectAsState()
+    val visibleHudTools by viewModel.visibleHudTools.collectAsState()
+    val sessionReports by viewModel.sessionReports.collectAsState()
+    val aiChatMessages by viewModel.aiChatMessages.collectAsState()
+    val isAiThinking by viewModel.isAiThinking.collectAsState()
+    val currentAiGameAdvice by viewModel.currentAiGameAdvice.collectAsState()
 
     var selectedGameId by remember(games) {
         mutableStateOf(games.firstOrNull()?.id ?: "")
     }
     if (selectedGameId.isBlank() && games.isNotEmpty()) {
         selectedGameId = games.first().id
+    }
+
+    val selectedGameProfile = remember(games, selectedGameId) {
+        games.find { it.id == selectedGameId } ?: games.firstOrNull()
+    }
+
+    val (liveConnectionType, liveNetworkLabel) = remember(latestNetworkReport, telemetry.pingMs) {
+        viewModel.networkBoosterEngine.inspectCurrentNetworkType()
+    }
+
+    val routeAssessment = remember(latestRouteReport, selectedGameProfile, latestNetworkReport) {
+        if (latestRouteReport != null && latestRouteReport?.selectedGamePackage == selectedGameProfile?.packageName) {
+            latestRouteReport
+        } else if (selectedGameProfile != null) {
+            viewModel.networkBoosterEngine.evaluateRouteOptimizationForGame(
+                gameTitle = selectedGameProfile.title,
+                gamePackage = selectedGameProfile.packageName,
+                isInstalled = selectedGameProfile.isInstalled,
+                latestReport = latestNetworkReport
+            )
+        } else {
+            latestRouteReport
+        }
     }
 
     val fpsHistory = remember(telemetry.liveFps) {
@@ -330,7 +366,14 @@ fun HassanGamesRootApp(
                             onClearLastSessionRecord = { viewModel.clearLastSessionRecord() },
                             onToggleNotificationShield = { viewModel.toggleNotificationShield() },
                             onOpenDndPermissionSettings = { viewModel.openDndPermissionSettings() },
-                            onLoadAppIcon = { pkg -> viewModel.getAppIconBitmap(pkg) }
+                            onLoadAppIcon = { pkg -> viewModel.getAppIconBitmap(pkg) },
+                            activeSessionGamePackage = activeSessionGamePackage,
+                            onEndActiveSession = { viewModel.endActiveGamingSession() },
+                            onOpenAiSetupForGame = { profile ->
+                                selectedGameId = profile.id
+                                viewModel.generateAiSmartGameSetup(profile)
+                                viewModel.selectTab(RedCoreTab.HASSAN_AI)
+                            }
                         )
                     }
 
@@ -406,9 +449,34 @@ fun HassanGamesRootApp(
                             processes = optimizableProcesses,
                             isBoosting = isBoosting,
                             lastBoostReport = lastBoostReport,
+                            latestNetworkReport = latestNetworkReport,
+                            networkTestHistory = networkTestHistory,
+                            isCheckingNetwork = isCheckingNetwork,
+                            liveConnectionType = liveConnectionType,
+                            liveNetworkLabel = liveNetworkLabel,
+                            games = games,
+                            selectedGameId = selectedGameId,
+                            routeAssessment = routeAssessment,
                             onExecuteDeepBoost = { viewModel.executeSuperBoost() },
                             onToggleProcessWhitelist = { viewModel.toggleProcessWhitelist(it) },
-                            onTestNetworkPing = { viewModel.testNetworkPingNow() }
+                            onTestNetworkPing = {
+                                viewModel.runOneTapNetworkCheck(selectedGameProfile?.title)
+                            },
+                            onRunFullNetworkCheck = {
+                                viewModel.runOneTapNetworkCheck(selectedGameProfile?.title)
+                            },
+                            onClearNetworkHistory = { viewModel.clearNetworkTestHistory() },
+                            onSelectRouteGame = { gameId ->
+                                selectedGameId = gameId
+                                val target = games.find { it.id == gameId }
+                                if (target != null) {
+                                    viewModel.runRouteOptimizationCheck(target)
+                                }
+                            },
+                            onOpenHassanAiForNetwork = {
+                                viewModel.runAiNetworkAdvisor()
+                                viewModel.selectTab(RedCoreTab.HASSAN_AI)
+                            }
                         )
                     }
 
@@ -451,6 +519,27 @@ fun HassanGamesRootApp(
                             onShowMessage = { viewModel.showStatusMessage(it) }
                         )
                     }
+
+                    RedCoreTab.HASSAN_AI -> {
+                        HassanAiScreen(
+                            messages = aiChatMessages,
+                            suggestionPrompts = viewModel.hassanAiEngine.defaultPrompts,
+                            isAiThinking = isAiThinking,
+                            selectedGame = selectedGameProfile,
+                            smartGameSetupAdvice = currentAiGameAdvice,
+                            sessionReports = sessionReports,
+                            onSendQuestion = { viewModel.sendAiQuestion(it) },
+                            onExecuteAiAction = { viewModel.executeAiQuickAction(it) },
+                            onRequestSmartGameSetup = {
+                                selectedGameProfile?.let { viewModel.generateAiSmartGameSetup(it) }
+                            },
+                            onApplySmartGameSetup = { advice ->
+                                viewModel.applyAiSmartGameSetup(advice)
+                            },
+                            onClearChatHistory = { viewModel.clearAiChatHistory() },
+                            onClearSessionReports = { viewModel.clearSessionReportsHistory() }
+                        )
+                    }
                 }
             }
         }
@@ -469,7 +558,13 @@ fun HassanGamesRootApp(
             notificationShieldActive = notificationShieldState.enabled,
             canDrawSystemOverlays = overlayPermissionGranted,
             isSystemOverlayRunning = floatingOverlayRunning,
+            games = games,
+            latestNetworkReport = latestNetworkReport,
+            isCheckingNetwork = isCheckingNetwork,
+            visibleHudTools = visibleHudTools,
+            activeSessionGamePackage = activeSessionGamePackage,
             onRunInstantBoost = { viewModel.executeSuperBoost() },
+            onQuickNetworkCheck = { viewModel.runOneTapNetworkCheck(selectedGameProfile?.title) },
             onSelectPerformanceMode = { viewModel.selectPerformanceMode(it) },
             onToggleCrosshair = { viewModel.toggleCrosshair(!crosshairConfig.enabled) },
             onToggleFpsPill = { viewModel.toggleFpsHudOverlay(!fpsHudOverlayEnabled) },
@@ -480,6 +575,13 @@ fun HassanGamesRootApp(
                 viewModel.toggleClonedButtonsMaster(!clonedButtonsConfig.enabled)
             },
             onToggleClonedButtonsLock = { viewModel.toggleClonedPositionsLocked() },
+            onToggleHudToolVisibility = { viewModel.toggleHudToolVisibility(it) },
+            onOpenAiAdvisor = { viewModel.selectTab(RedCoreTab.HASSAN_AI) },
+            onEndGamingSession = { viewModel.endActiveGamingSession() },
+            onLaunchGame = { profile ->
+                selectedGameId = profile.id
+                viewModel.launchOrSimulateGame(profile)
+            },
             onActivateSystemFloatingBar = {
                 if (floatingOverlayRunning) {
                     viewModel.stopFloatingSidebarOverlay()
@@ -553,11 +655,20 @@ private fun HassanGamingBottomBar(
             BottomNavTabItem(
                 tab = RedCoreTab.RAM_BOOSTER,
                 icon = Icons.Default.Memory,
-                label = "الرام والشبكة",
+                label = "الشبكة والرام",
                 selected = selectedTab == RedCoreTab.RAM_BOOSTER,
                 accentColor = accentColor,
                 testTag = "nav_tab_RAM_BOOSTER",
                 onClick = { onSelectTab(RedCoreTab.RAM_BOOSTER) }
+            )
+            BottomNavTabItem(
+                tab = RedCoreTab.HASSAN_AI,
+                icon = Icons.Default.Psychology,
+                label = "Hassan AI",
+                selected = selectedTab == RedCoreTab.HASSAN_AI,
+                accentColor = accentColor,
+                testTag = "nav_tab_HASSAN_AI",
+                onClick = { onSelectTab(RedCoreTab.HASSAN_AI) }
             )
         }
     }
@@ -578,7 +689,7 @@ private fun BottomNavTabItem(
             .clip(RoundedCornerShape(10.dp))
             .background(if (selected) accentColor.copy(alpha = 0.16f) else Color.Transparent)
             .clickable { onClick() }
-            .padding(horizontal = 12.dp, vertical = 6.dp)
+            .padding(horizontal = 8.dp, vertical = 6.dp)
             .testTag(testTag),
         horizontalAlignment = Alignment.CenterHorizontally
     ) {

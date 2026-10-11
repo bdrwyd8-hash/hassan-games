@@ -30,12 +30,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Bolt
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ControlCamera
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.Memory
-import androidx.compose.material.icons.filled.OpenInNew
 import androidx.compose.material.icons.filled.PowerSettingsNew
 import androidx.compose.material.icons.filled.Speed
 import androidx.compose.material.icons.filled.SportsEsports
@@ -678,9 +678,11 @@ private fun FloatingSidebarOverlayRoot(
     onStopGamingMode: () -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
+    var detailsExpanded by remember { mutableStateOf(false) }
     var telemetry by remember { mutableStateOf(HardwareTelemetry()) }
     var quickBoostBanner by remember { mutableStateOf<String?>(null) }
     var boostTick by remember { mutableIntStateOf(0) }
+    var networkCheckTick by remember { mutableIntStateOf(0) }
 
     val activeMode by TriggerEventBus.activePerformanceMode.collectAsState()
     val crosshairConfig by TriggerEventBus.crosshairConfig.collectAsState()
@@ -690,8 +692,7 @@ private fun FloatingSidebarOverlayRoot(
     // Lightweight telemetry loop — only runs when panel is expanded
     LaunchedEffect(expanded, activeMode) {
         while (isActive && expanded) {
-            telemetryEngine.triggerLightweightFrameSample()
-            telemetry = telemetryEngine.sampleTelemetry(activeMode, measureNetworkPing = false)
+            telemetry = telemetryEngine.sampleTelemetry(activeMode, measureNetworkPing = true)
             delay(4000L)
         }
     }
@@ -702,6 +703,15 @@ private fun FloatingSidebarOverlayRoot(
             telemetryEngine.notifyCacheCleaned(cleanedMb)
             quickBoostBanner = "تم تسريع الرام وتنظيف ${cleanedMb}MB كاش!"
             delay(2500L)
+            quickBoostBanner = null
+        }
+    }
+
+    LaunchedEffect(networkCheckTick) {
+        if (networkCheckTick > 0) {
+            telemetry = telemetryEngine.sampleTelemetry(activeMode, measureNetworkPing = true)
+            quickBoostBanner = "فحص الشبكة: Ping ${telemetry.pingMs}ms • حرارة ${telemetry.batteryTempCelsius}°C"
+            delay(3000L)
             quickBoostBanner = null
         }
     }
@@ -807,7 +817,7 @@ private fun FloatingSidebarOverlayRoot(
                                 modifier = Modifier.size(26.dp)
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.OpenInNew,
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                                     contentDescription = "فتح التطبيق",
                                     tint = Color(0xFF00E5FF),
                                     modifier = Modifier.size(15.dp)
@@ -829,19 +839,32 @@ private fun FloatingSidebarOverlayRoot(
 
                     Spacer(modifier = Modifier.height(8.dp))
 
-                    // Live telemetry strip
-                    Row(
+                    // Live telemetry strip (Expandable)
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .clip(RoundedCornerShape(8.dp))
                             .background(Color(0xFF151722))
-                            .padding(horizontal = 8.dp, vertical = 6.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .clickable { detailsExpanded = !detailsExpanded }
+                            .padding(horizontal = 8.dp, vertical = 6.dp)
                     ) {
-                        MiniOverlayStat("FPS", "${telemetry.liveFps}", Color(0xFF00E676))
-                        MiniOverlayStat("RAM", "${telemetry.ramUsagePercent}%", Color(0xFF00E5FF))
-                        MiniOverlayStat("TEMP", "${telemetry.batteryTempCelsius}°C", Color(0xFFFF9100))
-                        MiniOverlayStat("PING", "${telemetry.pingMs}ms", Color(0xFFFFEA00))
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            MiniOverlayStat("PING", "${telemetry.pingMs}ms", Color(0xFF00E676))
+                            MiniOverlayStat("RAM", "${telemetry.ramUsagePercent}%", Color(0xFF00E5FF))
+                            MiniOverlayStat("BAT TEMP", "${telemetry.batteryTempCelsius}°C", Color(0xFFFF9100))
+                            MiniOverlayStat("BAT", "${telemetry.batteryPercent}%", Color(0xFFFFEA00))
+                        }
+                        if (detailsExpanded) {
+                            Spacer(modifier = Modifier.height(4.dp))
+                            Text(
+                                text = "حرارة البطارية (Battery Sensor) • ذاكرة متاحة: ${telemetry.ramAvailableMb}MB/${telemetry.ramTotalMb}MB",
+                                color = Color.White.copy(alpha = 0.75f),
+                                fontSize = 9.sp
+                            )
+                        }
                     }
 
                     Spacer(modifier = Modifier.height(8.dp))
@@ -905,7 +928,7 @@ private fun FloatingSidebarOverlayRoot(
                             }
                         )
                         SidebarQuickToggleChip(
-                            title = "عداد FPS",
+                            title = "شريط القياس",
                             active = fpsHudVisible,
                             accent = Color(0xFF00E676),
                             icon = Icons.Default.Speed,
@@ -939,6 +962,30 @@ private fun FloatingSidebarOverlayRoot(
                             icon = Icons.Default.Memory,
                             modifier = Modifier.weight(1f),
                             onClick = { boostTick += 1 }
+                        )
+                    }
+
+                    Spacer(modifier = Modifier.height(6.dp))
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        SidebarQuickToggleChip(
+                            title = "فحص الشبكة الآن",
+                            active = true,
+                            accent = Color(0xFF00E5FF),
+                            icon = Icons.Default.Bolt,
+                            modifier = Modifier.weight(1f),
+                            onClick = { networkCheckTick += 1 }
+                        )
+                        SidebarQuickToggleChip(
+                            title = "الرجوع للتطبيق",
+                            active = false,
+                            accent = Color(0xFF00E676),
+                            icon = Icons.AutoMirrored.Filled.OpenInNew,
+                            modifier = Modifier.weight(1f),
+                            onClick = onOpenMainApp
                         )
                     }
 
@@ -1056,9 +1103,8 @@ private fun FloatingMiniFpsHudPill(
 
     LaunchedEffect(activeMode) {
         while (isActive) {
-            telemetryEngine.triggerLightweightFrameSample()
-            snap = telemetryEngine.sampleTelemetry(activeMode, measureNetworkPing = false)
-            delay(3000L)
+            snap = telemetryEngine.sampleTelemetry(activeMode, measureNetworkPing = true)
+            delay(3500L)
         }
     }
 
@@ -1086,7 +1132,7 @@ private fun FloatingMiniFpsHudPill(
                     modifier = Modifier.size(12.dp)
                 )
                 Text(
-                    text = "${snap.liveFps} FPS",
+                    text = "PING ${snap.pingMs}ms",
                     color = Color(0xFF00E676),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
@@ -1101,7 +1147,7 @@ private fun FloatingMiniFpsHudPill(
                     modifier = Modifier.size(12.dp)
                 )
                 Text(
-                    text = "${snap.batteryTempCelsius}°C",
+                    text = "BAT ${snap.batteryTempCelsius}°C",
                     color = Color(0xFFFF9100),
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
@@ -1109,7 +1155,7 @@ private fun FloatingMiniFpsHudPill(
                 )
             }
             Text(
-                text = "${snap.pingMs}ms",
+                text = "RAM ${snap.ramUsagePercent}%",
                 color = Color(0xFF00E5FF),
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,

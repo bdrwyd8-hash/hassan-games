@@ -6,9 +6,15 @@ import androidx.compose.ui.graphics.ImageBitmap
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.example.data.HardwareTelemetryEngine
+import com.example.data.HassanAiEngine
+import com.example.data.NetworkBoosterEngine
 import com.example.data.RedCorePreferencesRepository
 import com.example.data.SystemBoosterManager
 import com.example.model.AdvisorPresetMode
+import com.example.model.AiActionType
+import com.example.model.AiChatMessage
+import com.example.model.AiGameSetupAdvice
+import com.example.model.AiQuickActionChip
 import com.example.model.AutoSettingsRecommendation
 import com.example.model.BoostProcessItem
 import com.example.model.BoostResultReport
@@ -18,14 +24,18 @@ import com.example.model.CrosshairConfig
 import com.example.model.CrosshairStyle
 import com.example.model.GamePrepReport
 import com.example.model.GameSpaceProfile
+import com.example.model.GamingSessionReport
 import com.example.model.GfxResolutionPreset
 import com.example.model.HardwareTelemetry
+import com.example.model.HudShortcutTool
 import com.example.model.InstalledAppCandidate
 import com.example.model.LastSessionGameInfo
 import com.example.model.LowEndDeviceConfig
+import com.example.model.NetworkCheckReport
 import com.example.model.NotificationShieldState
 import com.example.model.PerformanceMode
 import com.example.model.QuickReconnectState
+import com.example.model.RouteOptimizationAssessment
 import com.example.model.SmartThermalMode
 import com.example.model.SmartThermalStatus
 import com.example.model.TouchSamplingRate
@@ -42,8 +52,9 @@ import kotlinx.coroutines.launch
 enum class RedCoreTab(val titleAr: String, val badgeCode: String) {
     GAME_SPACE("ألعابي My Games", "MY GAMES"),
     COMMAND_CENTER("مركز القيادة", "CORE"),
-    RAM_BOOSTER("مُقوّي الرام", "BOOST"),
-    ARSENAL_GFX("ترسانة اللعب", "ARSENAL")
+    RAM_BOOSTER("الشبكة والرام", "NET & RAM"),
+    ARSENAL_GFX("ترسانة اللعب", "ARSENAL"),
+    HASSAN_AI("مساعد Hassan AI", "HASSAN AI")
 }
 
 class RedCoreViewModel(application: Application) : AndroidViewModel(application) {
@@ -51,6 +62,8 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     private val prefsRepo = RedCorePreferencesRepository(application)
     private val telemetryEngine = HardwareTelemetryEngine(application)
     private val boosterManager = SystemBoosterManager(application)
+    val networkBoosterEngine = NetworkBoosterEngine(application)
+    val hassanAiEngine = HassanAiEngine()
 
     private val _selectedTab = MutableStateFlow(RedCoreTab.GAME_SPACE)
     val selectedTab: StateFlow<RedCoreTab> = _selectedTab.asStateFlow()
@@ -154,10 +167,55 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     val lastClonedActiveId: StateFlow<Int?> = TriggerEventBus.lastClonedActiveId
     val isMasterEngineRunning: StateFlow<Boolean> = TriggerEventBus.isMasterEngineRunning
     val activeGameTitle: StateFlow<String?> = TriggerEventBus.activeGameTitle
+    val activeSessionGamePackage: StateFlow<String?> = TriggerEventBus.activeGamePackage
+
+    private val _networkTestHistory = MutableStateFlow(prefsRepo.loadNetworkTestHistory())
+    val networkTestHistory: StateFlow<List<NetworkCheckReport>> = _networkTestHistory.asStateFlow()
+
+    private val _latestNetworkReport = MutableStateFlow(_networkTestHistory.value.firstOrNull())
+    val latestNetworkReport: StateFlow<NetworkCheckReport?> = _latestNetworkReport.asStateFlow()
+
+    private val _isCheckingNetwork = MutableStateFlow(false)
+    val isCheckingNetwork: StateFlow<Boolean> = _isCheckingNetwork.asStateFlow()
+
+    private val _latestRouteReport = MutableStateFlow<RouteOptimizationAssessment?>(null)
+    val latestRouteReport: StateFlow<RouteOptimizationAssessment?> = _latestRouteReport.asStateFlow()
+
+    private val _isCheckingRoutes = MutableStateFlow(false)
+    val isCheckingRoutes: StateFlow<Boolean> = _isCheckingRoutes.asStateFlow()
+
+    private val _visibleHudTools = MutableStateFlow(prefsRepo.loadHudVisibleTools())
+    val visibleHudTools: StateFlow<Set<HudShortcutTool>> = _visibleHudTools.asStateFlow()
+
+    private val _sessionReports = MutableStateFlow(prefsRepo.loadSessionReports())
+    val sessionReports: StateFlow<List<GamingSessionReport>> = _sessionReports.asStateFlow()
+
+    private val _aiChatMessages = MutableStateFlow(
+        listOf(hassanAiEngine.buildInitialWelcomeMessage())
+    )
+    val aiChatMessages: StateFlow<List<AiChatMessage>> = _aiChatMessages.asStateFlow()
+
+    private val _isAiThinking = MutableStateFlow(false)
+    val isAiThinking: StateFlow<Boolean> = _isAiThinking.asStateFlow()
+
+    private val _currentAiGameAdvice = MutableStateFlow<AiGameSetupAdvice?>(null)
+    val currentAiGameAdvice: StateFlow<AiGameSetupAdvice?> = _currentAiGameAdvice.asStateFlow()
 
     private var telemetryLoopJob: Job? = null
+    private var networkCheckJob: Job? = null
+    private var aiQueryJob: Job? = null
     private var isAppInForeground: Boolean = true
     private var pingPollCycleCounter = 0
+
+    // Active session tracker for Smart Gaming Report
+    private var activeSessionStartMs: Long = 0L
+    private var activeSessionStartTelemetry: HardwareTelemetry = HardwareTelemetry()
+    private var activeSessionStartRamPercent: Int = 0
+    private var activeSessionStartTempC: Float = 0f
+    private var activeSessionGameName: String? = null
+    private var activeSessionGamePkg: String? = null
+    private val activeSessionPings = mutableListOf<Int>()
+    private val activeSessionNetworkReports = mutableListOf<NetworkCheckReport>()
 
     init {
         TriggerEventBus.updatePerformanceMode(_performanceMode.value)
@@ -628,6 +686,23 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
     }
 
     private fun applyGameProfileSettingsInternal(profile: GameSpaceProfile) {
+        // If another game session was active, record its report before starting the new session
+        if (!activeSessionGamePkg.isNullOrBlank() && activeSessionGamePkg != profile.packageName) {
+            finalizeAndRecordActiveSessionReport()
+        }
+
+        activeSessionStartMs = System.currentTimeMillis()
+        activeSessionStartTelemetry = _telemetry.value
+        activeSessionStartRamPercent = _telemetry.value.ramUsagePercent
+        activeSessionStartTempC = _telemetry.value.batteryTempCelsius
+        activeSessionGameName = profile.title
+        activeSessionGamePkg = profile.packageName
+        activeSessionPings.clear()
+        activeSessionNetworkReports.clear()
+        if (_telemetry.value.pingMs > 0) {
+            activeSessionPings.add(_telemetry.value.pingMs)
+        }
+
         TriggerEventBus.setMasterEngineRunning(true)
         TriggerEventBus.setActiveGameSession(profile.packageName, profile.title)
 
@@ -1222,8 +1297,345 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
         postBanner("تم تشغيل محرك Hassan Games بنجاح!")
     }
 
+    // -------------------------------------------------------------------------
+    // NETWORK BOOSTER & ROUTE OPTIMIZATION DIAGNOSTICS
+    // -------------------------------------------------------------------------
+
+    fun runOneTapNetworkCheck(selectedGameTitle: String? = null) {
+        if (_isCheckingNetwork.value) return
+        networkCheckJob?.cancel()
+        networkCheckJob = viewModelScope.launch {
+            _isCheckingNetwork.value = true
+            val report = networkBoosterEngine.executeOneTapNetworkCheck(
+                previousReports = _networkTestHistory.value
+            )
+            _latestNetworkReport.value = report
+            activeSessionNetworkReports.add(report)
+            if (report.avgPingMs != null && report.avgPingMs > 0) {
+                activeSessionPings.add(report.avgPingMs)
+            }
+            val updatedHistory = (listOf(report) + _networkTestHistory.value)
+                .distinctBy { it.id }
+                .take(15)
+            _networkTestHistory.value = updatedHistory
+            prefsRepo.saveNetworkTestHistory(updatedHistory)
+
+            val targetGame = _gameSpaceCatalog.value.firstOrNull { it.title == selectedGameTitle }
+                ?: _gameSpaceCatalog.value.firstOrNull()
+            if (targetGame != null) {
+                _latestRouteReport.value = networkBoosterEngine.evaluateRouteOptimizationForGame(
+                    gameTitle = targetGame.title,
+                    gamePackage = targetGame.packageName,
+                    isInstalled = targetGame.isInstalled,
+                    latestReport = report
+                )
+            }
+
+            _isCheckingNetwork.value = false
+            postBanner(report.stabilityGrade.titleAr)
+        }
+    }
+
+    fun clearNetworkTestHistory() {
+        _networkTestHistory.value = emptyList()
+        _latestNetworkReport.value = null
+        prefsRepo.clearNetworkTestHistory()
+        postBanner("تم مسح سجل اختبارات الشبكة بنجاح")
+    }
+
+    fun runRouteOptimizationCheck(game: GameSpaceProfile) {
+        if (_isCheckingRoutes.value) return
+        viewModelScope.launch {
+            _isCheckingRoutes.value = true
+            val currentReport = _latestNetworkReport.value ?: run {
+                val fresh = networkBoosterEngine.executeOneTapNetworkCheck(_networkTestHistory.value)
+                _latestNetworkReport.value = fresh
+                val updatedHistory = (listOf(fresh) + _networkTestHistory.value)
+                    .distinctBy { it.id }
+                    .take(15)
+                _networkTestHistory.value = updatedHistory
+                prefsRepo.saveNetworkTestHistory(updatedHistory)
+                fresh
+            }
+            val routeReport = networkBoosterEngine.evaluateRouteOptimizationForGame(
+                gameTitle = game.title,
+                gamePackage = game.packageName,
+                isInstalled = game.isInstalled,
+                latestReport = currentReport
+            )
+            _latestRouteReport.value = routeReport
+            _isCheckingRoutes.value = false
+            postBanner("تم فحص المسارات المباشرة للعبة (${game.title})")
+        }
+    }
+
+    // -------------------------------------------------------------------------
+    // SMART GAMING HUD CUSTOMIZATION & SESSION CONTROL
+    // -------------------------------------------------------------------------
+
+    fun toggleHudToolVisibility(tool: HudShortcutTool) {
+        val current = _visibleHudTools.value.toMutableSet()
+        if (current.contains(tool)) {
+            if (current.size > 1) {
+                current.remove(tool)
+            } else {
+                postBanner("يجب إبقاء أداة واحدة على الأقل داخل الشريط الجانبي")
+                return
+            }
+        } else {
+            current.add(tool)
+        }
+        _visibleHudTools.value = current
+        prefsRepo.saveHudVisibleTools(current)
+    }
+
+    fun endActiveGamingSession() {
+        val endedGameTitle = activeSessionGameName ?: TriggerEventBus.activeGameTitle.value
+        finalizeAndRecordActiveSessionReport()
+        TriggerEventBus.setActiveGameSession(null, null)
+        boosterManager.restoreAllSessionControls()
+        stopFloatingSidebarOverlay()
+        _fpsHudOverlayEnabled.value = false
+        val disabledCrosshair = _crosshairConfig.value.copy(enabled = false)
+        _crosshairConfig.value = disabledCrosshair
+        prefsRepo.saveCrosshairConfig(disabledCrosshair)
+        TriggerEventBus.updateCrosshairConfig(disabledCrosshair)
+
+        if (!endedGameTitle.isNullOrBlank()) {
+            postBanner("تم إنهاء جلسة اللعب ($endedGameTitle) وحفظ تقرير الجلسة الذكي")
+        } else {
+            postBanner("تم إيقاف وضع اللعب واستعادة الإعدادات الافتراضية")
+        }
+    }
+
+    private fun finalizeAndRecordActiveSessionReport(): GamingSessionReport? {
+        val pkg = activeSessionGamePkg ?: TriggerEventBus.activeGamePackage.value ?: return null
+        val title = activeSessionGameName ?: TriggerEventBus.activeGameTitle.value ?: pkg
+        val startMs = if (activeSessionStartMs > 0L) activeSessionStartMs else (System.currentTimeMillis() - 60_000L)
+        val endMs = System.currentTimeMillis()
+        val currentSnap = _telemetry.value
+        val (_, netLabel) = networkBoosterEngine.inspectCurrentNetworkType()
+        val sessionNetList = if (activeSessionNetworkReports.isNotEmpty()) {
+            activeSessionNetworkReports.toList()
+        } else {
+            listOfNotNull(_latestNetworkReport.value)
+        }
+
+        val finalReport = hassanAiEngine.buildSessionReport(
+            gameTitle = title,
+            packageName = pkg,
+            startTimeMs = startMs,
+            endTimeMs = endMs,
+            appliedMode = _performanceMode.value,
+            telemetryStart = if (activeSessionStartMs > 0L) activeSessionStartTelemetry else currentSnap,
+            telemetryEnd = currentSnap,
+            networkReportsDuringSession = sessionNetList,
+            disconnectsCount = networkBoosterEngine.getRecordedDisconnects(),
+            currentNetworkTypeLabel = netLabel
+        )
+
+        val updatedReports = (listOf(finalReport) + _sessionReports.value)
+            .distinctBy { it.id }
+            .take(15)
+        _sessionReports.value = updatedReports
+        prefsRepo.saveSessionReports(updatedReports)
+
+        activeSessionStartMs = 0L
+        activeSessionGameName = null
+        activeSessionGamePkg = null
+        activeSessionPings.clear()
+        activeSessionNetworkReports.clear()
+        return finalReport
+    }
+
+    fun clearSessionReportsHistory() {
+        _sessionReports.value = emptyList()
+        prefsRepo.clearSessionReports()
+        postBanner("تم مسح تقارير جلسات اللعب بنجاح")
+    }
+
+    // -------------------------------------------------------------------------
+    // HASSAN AI ASSISTANT & AI GAMING OPTIMIZER
+    // -------------------------------------------------------------------------
+
+    private fun buildCurrentLiveAppContext(selectedGame: GameSpaceProfile? = null): HassanAiEngine.LiveAppContext {
+        val targetGame = selectedGame ?: _gameSpaceCatalog.value.firstOrNull()
+        return HassanAiEngine.LiveAppContext(
+            telemetry = _telemetry.value,
+            performanceMode = _performanceMode.value,
+            thermalStatus = _smartThermalStatus.value,
+            latestNetworkReport = _latestNetworkReport.value,
+            overlayPermissionGranted = _overlayPermissionGranted.value,
+            accessibilityEnabled = _accessibilityServiceEnabled.value,
+            dndPermissionGranted = _notificationShieldState.value.hasDndPermission,
+            floatingHudRunning = floatingOverlayRunning.value,
+            crosshairEnabled = _crosshairConfig.value.enabled,
+            clonedButtonsEnabled = _clonedButtonsConfig.value.enabled,
+            myGames = _gameSpaceCatalog.value,
+            selectedGame = targetGame,
+            latestSessionReport = _sessionReports.value.firstOrNull()
+        )
+    }
+
+    fun sendAiQuestion(question: String) {
+        val trimmed = question.trim()
+        if (trimmed.isEmpty() || _isAiThinking.value) return
+
+        val userMsg = AiChatMessage(
+            id = "user_${System.currentTimeMillis()}",
+            senderIsUser = true,
+            text = trimmed,
+            timestampMs = System.currentTimeMillis(),
+            sourceBadge = "المستخدم"
+        )
+        _aiChatMessages.value = _aiChatMessages.value + userMsg
+
+        aiQueryJob?.cancel()
+        aiQueryJob = viewModelScope.launch {
+            _isAiThinking.value = true
+            val contextSnap = buildCurrentLiveAppContext()
+            val responseMsg = hassanAiEngine.askHassanAi(
+                userQuestion = trimmed,
+                context = contextSnap
+            )
+            _aiChatMessages.value = _aiChatMessages.value + responseMsg
+            _isAiThinking.value = false
+        }
+    }
+
+    fun runAiNetworkAdvisor() {
+        viewModelScope.launch {
+            if (_latestNetworkReport.value == null && !_isCheckingNetwork.value) {
+                _isCheckingNetwork.value = true
+                val report = networkBoosterEngine.executeOneTapNetworkCheck(
+                    previousReports = _networkTestHistory.value
+                )
+                _latestNetworkReport.value = report
+                val updatedHistory = (listOf(report) + _networkTestHistory.value).take(15)
+                _networkTestHistory.value = updatedHistory
+                prefsRepo.saveNetworkTestHistory(updatedHistory)
+                _isCheckingNetwork.value = false
+            }
+            val netReport = _latestNetworkReport.value
+            val adviceText = netReport?.aiNetworkSummaryAr
+                ?: "لم يتم إجراء فحص للشبكة بعد؛ اضغط على فحص الشبكة الآن للحصول على تشخيص دقيق."
+            val aiMsg = AiChatMessage(
+                id = "ai_net_${System.currentTimeMillis()}",
+                senderIsUser = false,
+                text = adviceText,
+                timestampMs = System.currentTimeMillis(),
+                sourceBadge = "Hassan AI • مستشار الشبكة الذكي",
+                suggestedActions = listOf(
+                    AiQuickActionChip("فتح Network Booster", "Open Network Booster", AiActionType.OPEN_NETWORK_BOOSTER),
+                    AiQuickActionChip("إعادة فحص الشبكة", "Run Network Check", AiActionType.RUN_NETWORK_CHECK_NOW)
+                ),
+                isOfflineOrFallback = false
+            )
+            _aiChatMessages.value = _aiChatMessages.value + aiMsg
+        }
+    }
+
+    fun runAiPerformanceAdvisor() {
+        val contextSnap = buildCurrentLiveAppContext()
+        val adviceText = hassanAiEngine.generatePerformanceAdvisorReport(contextSnap)
+        val aiMsg = AiChatMessage(
+            id = "ai_perf_${System.currentTimeMillis()}",
+            senderIsUser = false,
+            text = adviceText,
+            timestampMs = System.currentTimeMillis(),
+            sourceBadge = "Hassan AI • مستشار الأداء والحرارة",
+            suggestedActions = listOf(
+                AiQuickActionChip("تنظيف الرام الآن", "RAM Boost Now", AiActionType.RUN_RAM_BOOST_NOW),
+                AiQuickActionChip("فتح مركز القيادة", "Command Center", AiActionType.OPEN_COMMAND_CENTER)
+            ),
+            isOfflineOrFallback = false
+        )
+        _aiChatMessages.value = _aiChatMessages.value + aiMsg
+    }
+
+    fun generateAiSmartGameSetup(game: GameSpaceProfile) {
+        val advice = hassanAiEngine.buildSmartGameSetupAdvice(
+            profile = game,
+            telemetry = _telemetry.value
+        )
+        _currentAiGameAdvice.value = advice
+    }
+
+    fun applyAiSmartGameSetup(advice: AiGameSetupAdvice) {
+        val targetGame = _gameSpaceCatalog.value.firstOrNull {
+            it.packageName == advice.packageName || it.title == advice.gameTitle
+        }
+        selectPerformanceMode(advice.recommendedPerformanceMode)
+        setSmartThermalMode(advice.recommendedThermalMode)
+
+        if (targetGame != null) {
+            val updated = targetGame.copy(
+                recommendedMode = advice.recommendedPerformanceMode,
+                autoCleanRamBeforeLaunch = true,
+                notificationShieldEnabled = true,
+                sidebarOverlayEnabled = true
+            )
+            updateGameProfile(updated)
+        }
+        postBanner("تم تطبيق إعدادات AI الذكية للعبة (${advice.gameTitle}) بنجاح!")
+    }
+
+    fun executeAiQuickAction(chip: AiQuickActionChip) {
+        executeAiQuickAction(chip.actionType)
+    }
+
+    fun executeAiQuickAction(actionType: AiActionType) {
+        when (actionType) {
+            AiActionType.OPEN_MY_GAMES -> {
+                selectTab(RedCoreTab.GAME_SPACE)
+            }
+            AiActionType.OPEN_ADD_GAME_PICKER -> {
+                selectTab(RedCoreTab.GAME_SPACE)
+                openAddGameSheet()
+            }
+            AiActionType.OPEN_NETWORK_BOOSTER -> {
+                selectTab(RedCoreTab.RAM_BOOSTER)
+            }
+            AiActionType.RUN_NETWORK_CHECK_NOW -> {
+                runOneTapNetworkCheck()
+            }
+            AiActionType.OPEN_GAMING_TOOLS -> {
+                selectTab(RedCoreTab.ARSENAL_GFX)
+            }
+            AiActionType.OPEN_COMMAND_CENTER -> {
+                selectTab(RedCoreTab.COMMAND_CENTER)
+            }
+            AiActionType.OPEN_SESSION_REPORTS -> {
+                selectTab(RedCoreTab.HASSAN_AI)
+            }
+            AiActionType.REQUEST_OVERLAY_PERMISSION -> {
+                openOverlayPermissionSettings()
+            }
+            AiActionType.REQUEST_ACCESSIBILITY_PERMISSION -> {
+                openAccessibilitySettings()
+            }
+            AiActionType.REQUEST_DND_PERMISSION -> {
+                openDndPermissionSettings()
+            }
+            AiActionType.RUN_RAM_BOOST_NOW -> {
+                executeSuperBoost()
+            }
+            AiActionType.TOGGLE_FLOATING_HUD -> {
+                toggleFloatingSidebarOrInApp()
+            }
+        }
+    }
+
+    fun clearAiChatHistory() {
+        _aiChatMessages.value = listOf(hassanAiEngine.buildInitialWelcomeMessage())
+        postBanner("تم مسح سجل محادثة Hassan AI")
+    }
+
     fun stopAllBackgroundWorkAndExit(onExitRequested: () -> Unit) {
+        finalizeAndRecordActiveSessionReport()
         telemetryLoopJob?.cancel()
+        networkCheckJob?.cancel()
+        aiQueryJob?.cancel()
         telemetryEngine.stopFrameMonitor()
         boosterManager.restoreAllSessionControls()
         _notificationShieldState.value = NotificationShieldState(enabled = false)
@@ -1244,6 +1656,8 @@ class RedCoreViewModel(application: Application) : AndroidViewModel(application)
 
     override fun onCleared() {
         telemetryLoopJob?.cancel()
+        networkCheckJob?.cancel()
+        aiQueryJob?.cancel()
         telemetryEngine.stopFrameMonitor()
         super.onCleared()
     }

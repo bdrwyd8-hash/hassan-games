@@ -214,14 +214,14 @@ fun CommandCenterScreen(
 
                     Column(horizontalAlignment = Alignment.End) {
                         Text(
-                            text = "${telemetry.liveFps}",
+                            text = "${telemetry.displayRefreshRateHz}Hz",
                             fontFamily = OrbitronFontFamily,
-                            fontSize = 26.sp,
+                            fontSize = 22.sp,
                             fontWeight = FontWeight.ExtraBold,
                             color = MatrixGreen
                         )
                         Text(
-                            text = "LIVE FPS",
+                            text = "DISPLAY HZ",
                             fontFamily = OrbitronFontFamily,
                             fontSize = 9.sp,
                             color = SilverMist
@@ -478,8 +478,8 @@ fun CommandCenterScreen(
 
                 QuickOverlayToggleRow(
                     icon = Icons.Default.Speed,
-                    title = "عداد الفريمات والحرارة العائم (FPS Pill)",
-                    subtitle = "يعرض الفريمات والحرارة والرام في كبسولة قابلة للسحب فوق اللعبة",
+                    title = "شريط قياس الشبكة والحرارة العائم (HUD Pill)",
+                    subtitle = "يعرض Ping الفعلي وحرارة البطارية والرام في كبسولة قابلة للتوسيع فوق اللعبة",
                     checked = fpsPillVisible,
                     accent = MatrixGreen,
                     onCheckedChange = onToggleFpsPill

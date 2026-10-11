@@ -1,57 +1,62 @@
 package com.example.ui.components
 
+import android.content.res.Configuration
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
-import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.CutCornerShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.AcUnit
+import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Bolt
-import androidx.compose.material.icons.filled.BrightnessHigh
-import androidx.compose.material.icons.filled.ChevronLeft
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Close
-import androidx.compose.material.icons.filled.ControlCamera
-import androidx.compose.material.icons.filled.DeleteSweep
-import androidx.compose.material.icons.filled.DoNotTouch
+import androidx.compose.material.icons.filled.ExpandLess
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.GpsFixed
-import androidx.compose.material.icons.filled.Layers
-import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.LockOpen
+import androidx.compose.material.icons.filled.Memory
+import androidx.compose.material.icons.filled.NetworkCheck
 import androidx.compose.material.icons.filled.NotificationsOff
-import androidx.compose.material.icons.filled.PlayArrow
 import androidx.compose.material.icons.filled.PowerSettingsNew
-import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Psychology
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Speed
-import androidx.compose.material.icons.filled.SwapHoriz
-import androidx.compose.material.icons.filled.Timer
+import androidx.compose.material.icons.filled.SportsEsports
+import androidx.compose.material.icons.filled.Thermostat
+import androidx.compose.material.icons.filled.Tune
+import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -59,32 +64,35 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.ClonedButtonsConfig
 import com.example.model.CrosshairConfig
+import com.example.model.GameSpaceProfile
 import com.example.model.HardwareTelemetry
+import com.example.model.HudShortcutTool
 import com.example.model.LowEndDeviceConfig
+import com.example.model.NetworkCheckReport
 import com.example.model.PerformanceMode
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.CyberCyan
-import com.example.ui.theme.ElectricPurple
 import com.example.ui.theme.GunmetalCard
 import com.example.ui.theme.MatrixGreen
 import com.example.ui.theme.MoltenAmber
@@ -93,14 +101,8 @@ import com.example.ui.theme.ObsidianSurface
 import com.example.ui.theme.OrbitronFontFamily
 import com.example.ui.theme.SilverMist
 import com.example.ui.theme.TitaniumWhite
-import kotlin.math.abs
-import kotlin.math.roundToInt
-import kotlinx.coroutines.delay
+import java.util.Locale
 
-/**
- * In-App Game Genie / Gaming Mode Side Dock Overlay.
- * Clean, lightweight, and responsive in-game control dock.
- */
 @Composable
 fun EdgeSwipeGameGenieOverlay(
     sidebarEnabledInApp: Boolean,
@@ -115,180 +117,358 @@ fun EdgeSwipeGameGenieOverlay(
     notificationShieldActive: Boolean,
     canDrawSystemOverlays: Boolean,
     isSystemOverlayRunning: Boolean,
+    games: List<GameSpaceProfile> = emptyList(),
+    latestNetworkReport: NetworkCheckReport? = null,
+    isCheckingNetwork: Boolean = false,
+    visibleHudTools: Set<HudShortcutTool> = HudShortcutTool.entries.toSet(),
+    activeSessionGamePackage: String? = null,
     onRunInstantBoost: () -> Unit,
+    onQuickNetworkCheck: () -> Unit = {},
     onSelectPerformanceMode: (PerformanceMode) -> Unit,
     onToggleCrosshair: () -> Unit,
     onToggleFpsPill: () -> Unit,
     onToggleNotificationShield: () -> Unit,
-    onToggleMistouch: () -> Unit,
-    onToggleBrightnessLock: () -> Unit,
-    onToggleClonedButtonsOverlay: () -> Unit,
-    onToggleClonedButtonsLock: () -> Unit,
-    onActivateSystemFloatingBar: () -> Unit,
+    onToggleMistouch: () -> Unit = {},
+    onToggleBrightnessLock: () -> Unit = {},
+    onToggleClonedButtonsOverlay: () -> Unit = {},
+    onToggleClonedButtonsLock: () -> Unit = {},
+    onToggleHudToolVisibility: (HudShortcutTool) -> Unit = {},
+    onOpenAiAdvisor: () -> Unit = {},
+    onEndGamingSession: () -> Unit = {},
+    onLaunchGame: (GameSpaceProfile) -> Unit = {},
+    onActivateSystemFloatingBar: () -> Unit = {},
     onRunCoolDown: () -> Unit = {},
     onShutdownAndExitApp: () -> Unit = {}
 ) {
-    var handleOffsetY by remember { mutableFloatStateOf(0f) }
-    var isRightEdge by remember { mutableStateOf(true) }
+    if (!sidebarEnabledInApp) return
 
-    // Tactical Stopwatch state inside the Game Genie sidebar
-    var timerRunning by remember { mutableStateOf(false) }
-    var timerSeconds by remember { mutableIntStateOf(0) }
-
-    LaunchedEffect(timerRunning) {
-        while (timerRunning) {
-            delay(1000L)
-            timerSeconds += 1
-        }
-    }
-
-    // 1. Center Floating Crosshair Preview when enabled in-app
-    if (crosshairConfig.enabled && !isSystemOverlayRunning) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = Alignment.Center
-        ) {
-            CrosshairCanvasView(config = crosshairConfig)
-        }
-    }
-
-    // 2. In-App Floating HUD Pill (FPS / Temp / RAM) when enabled
-    if (fpsPillVisible && !isSystemOverlayRunning) {
-        Box(
+    Box(modifier = Modifier.fillMaxSize()) {
+        TopFpsPillOverlay(
+            visible = fpsPillVisible,
+            telemetry = telemetry,
+            performanceMode = performanceMode,
+            latestNetworkReport = latestNetworkReport,
+            onClose = onToggleFpsPill,
+            onQuickNetworkCheck = onQuickNetworkCheck,
             modifier = Modifier
-                .fillMaxSize()
-                .padding(top = 56.dp, start = 16.dp),
-            contentAlignment = Alignment.TopStart
-        ) {
-            Surface(
-                shape = RoundedCornerShape(16.dp),
-                color = ObsidianSurface.copy(alpha = 0.88f),
-                border = BorderStroke(1.dp, CyberCyan),
-                modifier = Modifier.testTag("in_app_hud_overlay_pill")
-            ) {
-                Text(
-                    text = "${telemetry.liveFps} FPS  •  ${telemetry.batteryTempCelsius.roundToInt()}°C  •  RAM ${telemetry.ramUsagePercent}%",
-                    fontFamily = OrbitronFontFamily,
-                    fontSize = 11.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = MatrixGreen,
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                .align(Alignment.TopCenter)
+                .padding(top = 64.dp)
+        )
+
+        EdgeSwipeGameGenieHandle(
+            isOpen = isPanelExpanded,
+            activeMode = performanceMode,
+            onOpenDrawer = { onSetPanelExpanded(true) },
+            modifier = Modifier.align(Alignment.CenterEnd)
+        )
+
+        EdgeSwipeGameGenieDrawer(
+            isOpen = isPanelExpanded,
+            telemetry = telemetry,
+            performanceMode = performanceMode,
+            crosshairEnabled = crosshairConfig.enabled,
+            fpsPillEnabled = fpsPillVisible,
+            bypassChargingEnabled = lowEndConfig.brightnessLockEnabled,
+            notificationShieldEnabled = notificationShieldActive,
+            games = games,
+            latestNetworkReport = latestNetworkReport,
+            isCheckingNetwork = isCheckingNetwork,
+            visibleHudTools = visibleHudTools,
+            activeSessionGamePackage = activeSessionGamePackage,
+            onClose = { onSetPanelExpanded(false) },
+            onSelectMode = onSelectPerformanceMode,
+            onQuickRamPurge = onRunInstantBoost,
+            onQuickNetworkCheck = onQuickNetworkCheck,
+            onToggleCrosshair = onToggleCrosshair,
+            onToggleFpsPill = onToggleFpsPill,
+            onToggleBypassCharging = onToggleBrightnessLock,
+            onToggleNotificationShield = onToggleNotificationShield,
+            onToggleHudToolVisibility = onToggleHudToolVisibility,
+            onOpenAiAdvisor = onOpenAiAdvisor,
+            onEndGamingSession = onEndGamingSession,
+            onLaunchGame = onLaunchGame
+        )
+    }
+}
+
+@Composable
+fun EdgeSwipeGameGenieHandle(
+    isOpen: Boolean,
+    activeMode: PerformanceMode,
+    onOpenDrawer: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (isOpen) return
+
+    Box(
+        modifier = modifier
+            .width(24.dp)
+            .height(118.dp)
+            .clip(RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp))
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        activeMode.primaryColor,
+                        CrimsonRed.copy(alpha = 0.9f),
+                        ObsidianSurface
+                    )
                 )
+            )
+            .border(
+                width = 1.5.dp,
+                color = TitaniumWhite.copy(alpha = 0.6f),
+                shape = RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)
+            )
+            .pointerInput(Unit) {
+                detectHorizontalDragGestures { _, dragAmount ->
+                    if (dragAmount < -8f) {
+                        onOpenDrawer()
+                    }
+                }
             }
+            .clickable { onOpenDrawer() }
+            .testTag("edge_game_genie_handle"),
+        contentAlignment = Alignment.Center
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                contentDescription = "اسحب لفتح شريط أدوات اللعب",
+                tint = TitaniumWhite,
+                modifier = Modifier.size(18.dp)
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            Box(
+                modifier = Modifier
+                    .width(3.dp)
+                    .height(34.dp)
+                    .clip(CircleShape)
+                    .background(TitaniumWhite.copy(alpha = 0.9f))
+            )
         }
     }
+}
 
-    // 3. Collapsed Glowing Side-Edge Swipe Handle
-    if (sidebarEnabledInApp && !isPanelExpanded) {
-        Box(
-            modifier = Modifier.fillMaxSize(),
-            contentAlignment = if (isRightEdge) Alignment.CenterStart else Alignment.CenterEnd
+@Composable
+fun TopFpsPillOverlay(
+    visible: Boolean,
+    telemetry: HardwareTelemetry,
+    performanceMode: PerformanceMode = PerformanceMode.PERFORMANCE,
+    latestNetworkReport: NetworkCheckReport? = null,
+    onClose: () -> Unit,
+    onQuickNetworkCheck: () -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    var expanded by rememberSaveable { mutableStateOf(false) }
+
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(),
+        exit = fadeOut(),
+        modifier = modifier
+    ) {
+        val pingValue = latestNetworkReport?.avgPingMs ?: telemetry.pingMs
+        val pingColor = when {
+            pingValue <= 0 -> SilverMist
+            pingValue < 55 -> MatrixGreen
+            pingValue < 100 -> MoltenAmber
+            else -> CrimsonRed
+        }
+        val netLabel = latestNetworkReport?.connectionType?.labelEn ?: "NET"
+
+        Surface(
+            shape = RoundedCornerShape(16.dp),
+            color = ObsidianBlack.copy(alpha = 0.90f),
+            border = BorderStroke(1.2.dp, CyberCyan.copy(alpha = 0.8f)),
+            modifier = Modifier
+                .widthIn(max = 360.dp)
+                .testTag("floating_fps_pill_overlay")
         ) {
-            Surface(
-                modifier = Modifier
-                    .offset { IntOffset(0, handleOffsetY.roundToInt()) }
-                    .width(28.dp)
-                    .height(118.dp)
-                    .pointerInput(isRightEdge) {
-                        detectHorizontalDragGestures { change, dragAmount ->
-                            change.consume()
-                            if (abs(dragAmount) > 6f) {
-                                onSetPanelExpanded(true)
-                            }
-                        }
-                    }
-                    .pointerInput(Unit) {
-                        detectVerticalDragGestures { change, dragAmount ->
-                            change.consume()
-                            handleOffsetY = (handleOffsetY + dragAmount).coerceIn(-380f, 380f)
-                        }
-                    }
-                    .clickable { onSetPanelExpanded(true) }
-                    .testTag("edge_swipe_handle"),
-                shape = if (isRightEdge) {
-                    RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp)
-                } else {
-                    RoundedCornerShape(topStart = 14.dp, bottomStart = 14.dp)
-                },
-                color = ObsidianSurface.copy(alpha = 0.88f),
-                border = BorderStroke(1.5.dp, CrimsonRed)
+            Column(
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
             ) {
-                Column(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(vertical = 8.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.SpaceBetween
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Box(
                         modifier = Modifier
-                            .width(4.dp)
-                            .height(26.dp)
+                            .size(8.dp)
                             .clip(CircleShape)
-                            .background(CyberCyan)
+                            .background(pingColor)
                     )
-
+                    Text(
+                        text = if (pingValue > 0) "${pingValue}ms ($netLabel)" else "بدون اتصال",
+                        fontFamily = OrbitronFontFamily,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.ExtraBold,
+                        color = pingColor
+                    )
+                    Text(
+                        text = "•",
+                        color = SilverMist,
+                        fontSize = 10.sp
+                    )
+                    Text(
+                        text = String.format(Locale.US, "BAT %.1f°C", telemetry.batteryTempCelsius),
+                        fontFamily = OrbitronFontFamily,
+                        fontSize = 10.sp,
+                        color = if (telemetry.batteryTempCelsius > 42f) CrimsonRed else TitaniumWhite
+                    )
+                    Text(
+                        text = "•",
+                        color = SilverMist,
+                        fontSize = 10.sp
+                    )
+                    Text(
+                        text = "RAM ${telemetry.ramUsagePercent}%",
+                        fontFamily = OrbitronFontFamily,
+                        fontSize = 10.sp,
+                        color = CyberCyan
+                    )
                     Icon(
-                        imageVector = if (isRightEdge) Icons.Default.ChevronLeft else Icons.Default.ChevronRight,
-                        contentDescription = "فتح الشريط الجانبي العائم",
+                        imageVector = if (expanded) Icons.Default.ExpandLess else Icons.Default.ExpandMore,
+                        contentDescription = "توسيع معلومات HUD",
                         tint = TitaniumWhite,
-                        modifier = Modifier.size(18.dp)
+                        modifier = Modifier
+                            .size(18.dp)
+                            .clickable { expanded = !expanded }
+                            .testTag("hud_pill_expand_toggle")
                     )
+                    Icon(
+                        imageVector = Icons.Default.Close,
+                        contentDescription = "إغلاق شريط القياس",
+                        tint = SilverMist,
+                        modifier = Modifier
+                            .size(15.dp)
+                            .clickable { onClose() }
+                    )
+                }
 
-                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                AnimatedVisibility(
+                    visible = expanded,
+                    enter = expandVertically() + fadeIn(),
+                    exit = shrinkVertically() + fadeOut()
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 4.dp),
+                        verticalArrangement = Arrangement.spacedBy(4.dp)
+                    ) {
+                        HorizontalDivider(color = CarbonBorder)
                         Text(
-                            text = "${telemetry.liveFps}",
-                            fontFamily = OrbitronFontFamily,
-                            fontWeight = FontWeight.Bold,
-                            fontSize = 9.sp,
-                            color = MatrixGreen
+                            text = "المستشعر: حرارة البطارية الفعلية • البطارية: ${telemetry.batteryPercent}% ${if (telemetry.isCharging) "(شحن)" else ""}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SilverMist,
+                            fontSize = 10.sp
                         )
                         Text(
-                            text = "FPS",
-                            fontFamily = OrbitronFontFamily,
-                            fontSize = 7.sp,
-                            color = SilverMist
+                            text = "الذاكرة المتاحة: ${telemetry.ramAvailableMb}MB من ${telemetry.ramTotalMb}MB • وضع: ${performanceMode.titleAr}",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = SilverMist,
+                            fontSize = 10.sp
                         )
+                        Text(
+                            text = "ملاحظة تقنية: لا يعرض النظام رقم FPS وهمي؛ الألعاب المستقلة لا تسمح بقراءة SurfaceFlinger بدون صلاحيات نظام خاصة.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MoltenAmber,
+                            fontSize = 9.sp
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.End
+                        ) {
+                            Text(
+                                text = "فحص الشبكة الآن ⚡",
+                                style = MaterialTheme.typography.labelSmall,
+                                color = CyberCyan,
+                                fontWeight = FontWeight.Bold,
+                                modifier = Modifier
+                                    .clickable { onQuickNetworkCheck() }
+                                    .padding(vertical = 2.dp, horizontal = 4.dp)
+                                    .testTag("hud_pill_quick_net_check")
+                            )
+                        }
                     }
                 }
             }
         }
     }
+}
 
-    // 4. Expanded Floating Game Genie / Game Turbo Side Panel
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun EdgeSwipeGameGenieDrawer(
+    isOpen: Boolean,
+    telemetry: HardwareTelemetry,
+    performanceMode: PerformanceMode = PerformanceMode.PERFORMANCE,
+    crosshairEnabled: Boolean,
+    fpsPillEnabled: Boolean,
+    bypassChargingEnabled: Boolean,
+    notificationShieldEnabled: Boolean,
+    games: List<GameSpaceProfile>,
+    latestNetworkReport: NetworkCheckReport? = null,
+    isCheckingNetwork: Boolean = false,
+    visibleHudTools: Set<HudShortcutTool> = HudShortcutTool.entries.toSet(),
+    activeSessionGamePackage: String? = null,
+    onClose: () -> Unit,
+    onSelectMode: (PerformanceMode) -> Unit,
+    onQuickRamPurge: () -> Unit,
+    onQuickNetworkCheck: () -> Unit = {},
+    onToggleCrosshair: () -> Unit,
+    onToggleFpsPill: () -> Unit,
+    onToggleBypassCharging: () -> Unit,
+    onToggleNotificationShield: () -> Unit,
+    onToggleHudToolVisibility: (HudShortcutTool) -> Unit = {},
+    onOpenAiAdvisor: () -> Unit = {},
+    onEndGamingSession: () -> Unit = {},
+    onLaunchGame: (GameSpaceProfile) -> Unit
+) {
+    val configuration = LocalConfiguration.current
+    val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+    var showMiniExpandedDetails by rememberSaveable { mutableStateOf(false) }
+    var showToolCustomizer by rememberSaveable { mutableStateOf(false) }
+
     AnimatedVisibility(
-        visible = isPanelExpanded,
-        enter = fadeIn(),
-        exit = fadeOut()
+        visible = isOpen,
+        enter = slideInHorizontally(
+            initialOffsetX = { fullWidth -> fullWidth },
+            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+        ) + fadeIn(),
+        exit = slideOutHorizontally(
+            targetOffsetX = { fullWidth -> fullWidth },
+            animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+        ) + fadeOut()
     ) {
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                .background(ObsidianBlack.copy(alpha = 0.58f))
-                .pointerInput(Unit) {
-                    detectTapGestures(onTap = { onSetPanelExpanded(false) })
-                },
-            contentAlignment = if (isRightEdge) Alignment.CenterStart else Alignment.CenterEnd
+                .background(Color.Black.copy(alpha = 0.50f))
+                .clickable { onClose() }
+                .testTag("edge_game_genie_backdrop"),
+            contentAlignment = Alignment.CenterEnd
         ) {
             Surface(
                 modifier = Modifier
-                    .width(315.dp)
-                    .fillMaxHeight(0.88f)
-                    .padding(horizontal = 8.dp)
-                    .pointerInput(Unit) {
-                        detectTapGestures(onTap = { /* consume inside panel */ })
-                    }
-                    .testTag("floating_game_genie_panel"),
-                shape = CutCornerShape(topStart = 18.dp, bottomEnd = 18.dp, topEnd = 8.dp, bottomStart = 8.dp),
+                    .width(if (isLandscape) 360.dp else 320.dp)
+                    .fillMaxHeight(if (isLandscape) 0.94f else 0.90f)
+                    .clickable(enabled = false) { }
+                    .testTag("edge_game_genie_drawer"),
+                shape = CutCornerShape(topStart = 24.dp, bottomStart = 24.dp),
                 color = ObsidianSurface.copy(alpha = 0.97f),
-                border = BorderStroke(1.8.dp, CrimsonRed)
+                border = BorderStroke(1.5.dp, performanceMode.primaryColor)
             ) {
                 Column(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(14.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     // Header
                     Row(
@@ -296,130 +476,230 @@ fun EdgeSwipeGameGenieOverlay(
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Icon(
-                                imageVector = Icons.Default.Bolt,
-                                contentDescription = null,
-                                tint = CrimsonRed,
-                                modifier = Modifier.size(20.dp)
+                        Column {
+                            Text(
+                                text = "HASSAN SMART GAMING HUD",
+                                fontFamily = OrbitronFontFamily,
+                                fontSize = 13.sp,
+                                fontWeight = FontWeight.Black,
+                                color = performanceMode.primaryColor
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
-                            Column {
-                                Text(
-                                    text = "شريط الألعاب العائم",
-                                    style = MaterialTheme.typography.titleSmall,
-                                    color = TitaniumWhite,
-                                    fontWeight = FontWeight.Bold
-                                )
-                                Text(
-                                    text = "HASSAN GAMING SIDEBAR",
-                                    fontFamily = OrbitronFontFamily,
-                                    fontSize = 9.sp,
-                                    color = CyberCyan
-                                )
-                            }
+                            Text(
+                                text = if (isLandscape) "شريط اللعب الجانبي (وضع أفقي)" else "شريط اللعب الجانبي الذكي",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = SilverMist
+                            )
                         }
 
-                        Row {
+                        Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             IconButton(
-                                onClick = { isRightEdge = !isRightEdge },
-                                modifier = Modifier.size(30.dp)
+                                onClick = { showToolCustomizer = !showToolCustomizer },
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(GunmetalCard)
+                                    .testTag("hud_customize_tools_btn")
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.SwapHoriz,
-                                    contentDescription = "تبديل جهة الشريط يمين/يسار",
+                                    imageVector = Icons.Default.Tune,
+                                    contentDescription = "تخصيص أدوات الشريط",
                                     tint = CyberCyan,
-                                    modifier = Modifier.size(18.dp)
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
+
                             IconButton(
-                                onClick = { onSetPanelExpanded(false) },
-                                modifier = Modifier.size(30.dp)
+                                onClick = onClose,
+                                modifier = Modifier
+                                    .size(34.dp)
+                                    .clip(CircleShape)
+                                    .background(GunmetalCard)
+                                    .testTag("close_game_genie_button")
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "إغلاق الشريط",
-                                    tint = SilverMist,
-                                    modifier = Modifier.size(18.dp)
+                                    contentDescription = "إغلاق الشريط الجانبي",
+                                    tint = TitaniumWhite,
+                                    modifier = Modifier.size(16.dp)
                                 )
                             }
                         }
                     }
 
-                    // Live Telemetry Mini Strip inside Floating Panel
-                    Row(
+                    // Expandable Mini Telemetry & Network Panel
+                    val pingMs = latestNetworkReport?.avgPingMs ?: telemetry.pingMs
+                    val connTypeLabel = latestNetworkReport?.connectionType?.labelAr ?: "فحص مباشر"
+                    val pingColor = when {
+                        pingMs <= 0 -> SilverMist
+                        pingMs < 55 -> MatrixGreen
+                        pingMs < 100 -> MoltenAmber
+                        else -> CrimsonRed
+                    }
+
+                    Surface(
+                        shape = RoundedCornerShape(14.dp),
+                        color = GunmetalCard,
+                        border = BorderStroke(1.dp, CarbonBorder),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .clip(RoundedCornerShape(10.dp))
-                            .background(GunmetalCard)
-                            .border(1.dp, CarbonBorder, RoundedCornerShape(10.dp))
-                            .padding(horizontal = 10.dp, vertical = 8.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween
+                            .clickable { showMiniExpandedDetails = !showMiniExpandedDetails }
+                            .testTag("hud_expandable_telemetry_card")
                     ) {
-                        FloatingMetricItem("FPS", "${telemetry.liveFps}", MatrixGreen)
-                        FloatingMetricItem("RAM", "${telemetry.ramUsagePercent}%", CyberCyan)
-                        FloatingMetricItem("TEMP", "${telemetry.batteryTempCelsius.roundToInt()}°", MoltenAmber)
-                        FloatingMetricItem("PING", "${telemetry.pingMs}ms", MatrixGreen)
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                GenieStatBadge(
+                                    icon = Icons.Default.Wifi,
+                                    label = "PING",
+                                    value = if (pingMs > 0) "${pingMs}ms" else "N/A",
+                                    color = pingColor
+                                )
+                                GenieStatBadge(
+                                    icon = Icons.Default.Thermostat,
+                                    label = "حرارة البطارية",
+                                    value = String.format(Locale.US, "%.1f°C", telemetry.batteryTempCelsius),
+                                    color = if (telemetry.batteryTempCelsius > 42f) CrimsonRed else MoltenAmber
+                                )
+                                GenieStatBadge(
+                                    icon = Icons.Default.Memory,
+                                    label = "الذاكرة RAM",
+                                    value = "${telemetry.ramUsagePercent}%",
+                                    color = CyberCyan
+                                )
+                                GenieStatBadge(
+                                    icon = Icons.Default.BatteryChargingFull,
+                                    label = "البطارية",
+                                    value = "${telemetry.batteryPercent}%",
+                                    color = MatrixGreen
+                                )
+                            }
+
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "الشبكة: $connTypeLabel",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = SilverMist,
+                                    fontSize = 10.sp
+                                )
+                                Text(
+                                    text = if (showMiniExpandedDetails) "إخفاء التفاصيل ▲" else "توسيع القراءات ▼",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = CyberCyan,
+                                    fontSize = 10.sp
+                                )
+                            }
+
+                            AnimatedVisibility(visible = showMiniExpandedDetails) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 4.dp),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    HorizontalDivider(color = CarbonBorder)
+                                    Text(
+                                        text = "• المستشعر الحراري: مستشعر البطارية الفعلي (Battery Sensor) = ${String.format(Locale.US, "%.1f°C", telemetry.batteryTempCelsius)}",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TitaniumWhite,
+                                        fontSize = 10.sp
+                                    )
+                                    Text(
+                                        text = "• الذاكرة العشوائية: متاح ${telemetry.ramAvailableMb} MB من إجمالي ${telemetry.ramTotalMb} MB",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = TitaniumWhite,
+                                        fontSize = 10.sp
+                                    )
+                                    if (latestNetworkReport != null) {
+                                        Text(
+                                            text = "• آخر خادم فحص: ${latestNetworkReport.testedServerName} • التذبذب (Jitter): ${latestNetworkReport.jitterMs ?: 0}ms • الفقدان: ${latestNetworkReport.packetLossPercent ?: 0}%",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = CyberCyan,
+                                            fontSize = 10.sp
+                                        )
+                                    }
+                                    Text(
+                                        text = "• شفافية القياس: لا يعرض الشريط رقم FPS وهمي للعبة.",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MoltenAmber,
+                                        fontSize = 10.sp
+                                    )
+                                }
+                            }
+                        }
                     }
 
-                    // 1-Tap Instant RAM & Cache Purge + ICE Cooler inside Floating Bar
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        Button(
-                            onClick = onRunInstantBoost,
+                    // Tool Customizer Panel
+                    AnimatedVisibility(visible = showToolCustomizer) {
+                        Surface(
+                            shape = RoundedCornerShape(12.dp),
+                            color = GunmetalCard,
+                            border = BorderStroke(1.dp, CyberCyan.copy(alpha = 0.6f)),
                             modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                                .testTag("floating_instant_boost_btn"),
-                            shape = CutCornerShape(8.dp),
-                            contentPadding = PaddingValues(horizontal = 8.dp),
-                            colors = ButtonDefaults.buttonColors(
-                                containerColor = CrimsonRed,
-                                contentColor = Color.White
-                            )
+                                .fillMaxWidth()
+                                .testTag("hud_tool_customizer_panel")
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = null,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "تسريع الرام",
-                                style = MaterialTheme.typography.labelMedium,
-                                fontWeight = FontWeight.Bold
-                            )
-                        }
-
-                        OutlinedButton(
-                            onClick = onRunCoolDown,
-                            modifier = Modifier
-                                .weight(1f)
-                                .height(42.dp)
-                                .testTag("floating_cooldown_btn"),
-                            shape = CutCornerShape(8.dp),
-                            border = BorderStroke(1.dp, CyberCyan),
-                            contentPadding = PaddingValues(horizontal = 8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.AcUnit,
-                                contentDescription = null,
-                                tint = CyberCyan,
-                                modifier = Modifier.size(16.dp)
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "تبريد ذكي",
-                                style = MaterialTheme.typography.labelMedium,
-                                color = CyberCyan,
-                                fontWeight = FontWeight.Bold
-                            )
+                            Column(
+                                modifier = Modifier.padding(10.dp),
+                                verticalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                Text(
+                                    text = "اختر الأدوات التي تظهر في الشريط الجانبي:",
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = CyberCyan,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                FlowRow(
+                                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                                ) {
+                                    HudShortcutTool.entries.forEach { tool ->
+                                        val selected = visibleHudTools.contains(tool)
+                                        Box(
+                                            modifier = Modifier
+                                                .clip(RoundedCornerShape(8.dp))
+                                                .background(if (selected) MatrixGreen.copy(alpha = 0.2f) else ObsidianSurface)
+                                                .border(
+                                                    1.dp,
+                                                    if (selected) MatrixGreen else CarbonBorder,
+                                                    RoundedCornerShape(8.dp)
+                                                )
+                                                .clickable { onToggleHudToolVisibility(tool) }
+                                                .padding(horizontal = 8.dp, vertical = 5.dp)
+                                                .testTag("hud_toggle_tool_${tool.name}"),
+                                            contentAlignment = Alignment.Center
+                                        ) {
+                                            Text(
+                                                text = if (selected) "✓ ${tool.titleAr}" else "+ ${tool.titleAr}",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = if (selected) MatrixGreen else SilverMist,
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Bold
+                                            )
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
-                    // Performance Mode Quick Selector
+                    // Performance Mode Selector
+                    Text(
+                        text = "وضع الأداء الفوري",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TitaniumWhite,
+                        fontSize = 13.sp
+                    )
+
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
@@ -429,17 +709,24 @@ fun EdgeSwipeGameGenieOverlay(
                             Box(
                                 modifier = Modifier
                                     .weight(1f)
-                                    .clip(RoundedCornerShape(6.dp))
-                                    .background(if (selected) mode.primaryColor.copy(alpha = 0.25f) else GunmetalCard)
-                                    .border(1.dp, if (selected) mode.primaryColor else CarbonBorder, RoundedCornerShape(6.dp))
-                                    .clickable { onSelectPerformanceMode(mode) }
-                                    .padding(vertical = 6.dp),
+                                    .clip(CutCornerShape(8.dp))
+                                    .background(
+                                        if (selected) mode.primaryColor.copy(alpha = 0.22f)
+                                        else GunmetalCard
+                                    )
+                                    .border(
+                                        width = if (selected) 1.5.dp else 1.dp,
+                                        color = if (selected) mode.primaryColor else CarbonBorder,
+                                        shape = CutCornerShape(8.dp)
+                                    )
+                                    .clickable { onSelectMode(mode) }
+                                    .padding(vertical = 8.dp),
                                 contentAlignment = Alignment.Center
                             ) {
                                 Text(
                                     text = mode.badgeText,
                                     fontFamily = OrbitronFontFamily,
-                                    fontSize = 9.sp,
+                                    fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
                                     color = if (selected) mode.primaryColor else SilverMist
                                 )
@@ -447,29 +734,25 @@ fun EdgeSwipeGameGenieOverlay(
                         }
                     }
 
-                    // Quick Tactical Grid Tools (Clean Gaming Tools)
+                    // Quick Toggles Grid
+                    Text(
+                        text = "اختصارات الأدوات النشطة",
+                        style = MaterialTheme.typography.titleMedium,
+                        color = TitaniumWhite,
+                        fontSize = 13.sp
+                    )
+
                     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FloatingDockTile(
-                                icon = Icons.Default.GpsFixed,
-                                title = "مؤشر التصويب",
-                                status = if (crosshairConfig.enabled) "مفعّل ON" else "متوقف",
-                                active = crosshairConfig.enabled,
-                                accent = CrimsonRed,
-                                onClick = onToggleCrosshair,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FloatingDockTile(
-                                icon = Icons.Default.Speed,
-                                title = "عداد FPS العائم",
-                                status = if (fpsPillVisible) "مفعّل ON" else "متوقف",
-                                active = fpsPillVisible,
-                                accent = MatrixGreen,
-                                onClick = onToggleFpsPill,
-                                modifier = Modifier.weight(1f)
+                        if (visibleHudTools.contains(HudShortcutTool.NETWORK_CHECK)) {
+                            GenieActionTile(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .testTag("hud_quick_network_check_tile"),
+                                icon = Icons.Default.NetworkCheck,
+                                label = if (isCheckingNetwork) "جاري فحص الشبكة..." else "فحص الشبكة الفوري (${if (pingMs > 0) "${pingMs}ms" else "اختبار"})",
+                                active = true,
+                                activeColor = CyberCyan,
+                                onClick = onQuickNetworkCheck
                             )
                         }
 
@@ -477,191 +760,193 @@ fun EdgeSwipeGameGenieOverlay(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            FloatingDockTile(
-                                icon = Icons.Default.ControlCamera,
-                                title = "أزرار منسوخة",
-                                status = if (clonedButtonsConfig.enabled) "عائمة ON" else "إظهار C1-C4",
-                                active = clonedButtonsConfig.enabled,
-                                accent = CyberCyan,
-                                onClick = onToggleClonedButtonsOverlay,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FloatingDockTile(
-                                icon = if (clonedButtonsConfig.editPositionsLocked) Icons.Default.Lock else Icons.Default.LockOpen,
-                                title = "قفل المواقع",
-                                status = if (clonedButtonsConfig.editPositionsLocked) "مقفول للعب 🔒" else "وضع تحريك 🔓",
-                                active = clonedButtonsConfig.editPositionsLocked,
-                                accent = MatrixGreen,
-                                onClick = onToggleClonedButtonsLock,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FloatingDockTile(
-                                icon = Icons.Default.NotificationsOff,
-                                title = "درع الإشعارات",
-                                status = if (notificationShieldActive) "صامت ON" else "عادي",
-                                active = notificationShieldActive,
-                                accent = ElectricPurple,
-                                onClick = onToggleNotificationShield,
-                                modifier = Modifier.weight(1f)
-                            )
-                            FloatingDockTile(
-                                icon = Icons.Default.DoNotTouch,
-                                title = "منع اللمس الخاطئ",
-                                status = if (lowEndConfig.touchEdgeRejectEnabled) "محمي" else "عادي",
-                                active = lowEndConfig.touchEdgeRejectEnabled,
-                                accent = MoltenAmber,
-                                onClick = onToggleMistouch,
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            FloatingDockTile(
-                                icon = Icons.Default.BrightnessHigh,
-                                title = "تثبيت السطوع",
-                                status = if (lowEndConfig.brightnessLockEnabled) "${lowEndConfig.lockedBrightnessPercent}% ثابت" else "تلقائي",
-                                active = lowEndConfig.brightnessLockEnabled,
-                                accent = CyberCyan,
-                                onClick = onToggleBrightnessLock,
-                                modifier = Modifier.fillMaxWidth()
-                            )
-                        }
-                    }
-
-                    // Tactical Cooldown / Airdrop Stopwatch
-                    Surface(
-                        modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(10.dp),
-                        color = GunmetalCard,
-                        border = BorderStroke(1.dp, CarbonBorder)
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(horizontal = 10.dp, vertical = 8.dp),
-                            horizontalArrangement = Arrangement.SpaceBetween,
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Icon(
-                                    imageVector = Icons.Default.Timer,
-                                    contentDescription = null,
-                                    tint = MoltenAmber,
-                                    modifier = Modifier.size(18.dp)
+                            if (visibleHudTools.contains(HudShortcutTool.RAM_BOOST)) {
+                                GenieActionTile(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.Bolt,
+                                    label = "تنظيف RAM",
+                                    active = true,
+                                    activeColor = MatrixGreen,
+                                    onClick = onQuickRamPurge
                                 )
-                                Spacer(modifier = Modifier.width(6.dp))
-                                Column {
-                                    Text(
-                                        text = "مؤقت تكتيكي داخل اللعب",
-                                        style = MaterialTheme.typography.bodySmall,
-                                        color = TitaniumWhite,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                    val mins = timerSeconds / 60
-                                    val secs = timerSeconds % 60
-                                    Text(
-                                        text = "%02d:%02d".format(mins, secs),
-                                        fontFamily = OrbitronFontFamily,
-                                        fontSize = 13.sp,
-                                        color = MoltenAmber,
-                                        fontWeight = FontWeight.Bold
-                                    )
-                                }
                             }
+                            if (visibleHudTools.contains(HudShortcutTool.CROSSHAIR)) {
+                                GenieActionTile(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.GpsFixed,
+                                    label = "Crosshair",
+                                    active = crosshairEnabled,
+                                    activeColor = CrimsonRed,
+                                    onClick = onToggleCrosshair
+                                )
+                            }
+                        }
 
-                            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                                IconButton(
-                                    onClick = { timerRunning = !timerRunning },
-                                    modifier = Modifier.size(30.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.PlayArrow,
-                                        contentDescription = "بدء/إيقاف المؤقت",
-                                        tint = if (timerRunning) MatrixGreen else TitaniumWhite
-                                    )
-                                }
-                                IconButton(
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (visibleHudTools.contains(HudShortcutTool.FPS_PILL)) {
+                                GenieActionTile(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.Speed,
+                                    label = "شريط القياس HUD",
+                                    active = fpsPillEnabled,
+                                    activeColor = CyberCyan,
+                                    onClick = onToggleFpsPill
+                                )
+                            }
+                            if (visibleHudTools.contains(HudShortcutTool.THERMAL_COOL)) {
+                                GenieActionTile(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.BatteryChargingFull,
+                                    label = "تثبيت السطوع/الحرارة",
+                                    active = bypassChargingEnabled,
+                                    activeColor = MoltenAmber,
+                                    onClick = onToggleBypassCharging
+                                )
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            if (visibleHudTools.contains(HudShortcutTool.NOTIFICATION_SHIELD)) {
+                                GenieActionTile(
+                                    modifier = Modifier.weight(1f),
+                                    icon = Icons.Default.NotificationsOff,
+                                    label = "منع الإزعاج",
+                                    active = notificationShieldEnabled,
+                                    activeColor = MatrixGreen,
+                                    onClick = onToggleNotificationShield
+                                )
+                            }
+                            if (visibleHudTools.contains(HudShortcutTool.HASSAN_AI_QUICK)) {
+                                GenieActionTile(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .testTag("hud_open_ai_advisor_tile"),
+                                    icon = Icons.Default.Psychology,
+                                    label = "مساعد Hassan AI",
+                                    active = true,
+                                    activeColor = MoltenAmber,
                                     onClick = {
-                                        timerRunning = false
-                                        timerSeconds = 0
-                                    },
-                                    modifier = Modifier.size(30.dp)
+                                        onClose()
+                                        onOpenAiAdvisor()
+                                    }
+                                )
+                            }
+                        }
+                    }
+
+                    if (games.isNotEmpty()) {
+                        HorizontalDivider(color = CarbonBorder)
+
+                        Text(
+                            text = "تشغيل سريع للألعاب",
+                            style = MaterialTheme.typography.titleMedium,
+                            color = TitaniumWhite,
+                            fontSize = 13.sp
+                        )
+
+                        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                            games.take(3).forEach { game ->
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(10.dp))
+                                        .background(GunmetalCard)
+                                        .border(1.dp, CarbonBorder, RoundedCornerShape(10.dp))
+                                        .clickable {
+                                            onLaunchGame(game)
+                                            onClose()
+                                        }
+                                        .padding(horizontal = 12.dp, vertical = 9.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Refresh,
-                                        contentDescription = "تصفير المؤقت",
-                                        tint = SilverMist
+                                    Row(
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        modifier = Modifier.weight(1f)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.SportsEsports,
+                                            contentDescription = null,
+                                            tint = Color(game.accentHex),
+                                            modifier = Modifier.size(16.dp)
+                                        )
+                                        Spacer(modifier = Modifier.width(8.dp))
+                                        Text(
+                                            text = game.title,
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            color = TitaniumWhite,
+                                            fontWeight = FontWeight.Bold,
+                                            maxLines = 1,
+                                            overflow = TextOverflow.Ellipsis
+                                        )
+                                    }
+                                    Text(
+                                        text = if (game.isInstalled) "تشغيل" else "تجهيز",
+                                        style = MaterialTheme.typography.labelMedium,
+                                        color = CyberCyan
                                     )
                                 }
                             }
                         }
                     }
 
-                    // System-Wide Overlay Pin Button (For External Games)
-                    OutlinedButton(
-                        onClick = onActivateSystemFloatingBar,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("enable_system_floating_bar_btn"),
-                        shape = RoundedCornerShape(8.dp),
-                        border = BorderStroke(
-                            1.dp,
-                            if (isSystemOverlayRunning) MatrixGreen else CyberCyan
-                        ),
-                        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 10.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Layers,
-                            contentDescription = null,
-                            tint = if (isSystemOverlayRunning) MatrixGreen else CyberCyan,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = when {
-                                isSystemOverlayRunning -> "✓ الشريط العائم نشط فوق الألعاب الخارجية"
-                                canDrawSystemOverlays -> "تشغيل الشريط العائم فوق جميع الألعاب الآن"
-                                else -> "منح إذن الظهور العائم فوق الألعاب (Settings)"
-                            },
-                            style = MaterialTheme.typography.bodySmall,
-                            color = if (isSystemOverlayRunning) MatrixGreen else CyberCyan,
-                            fontWeight = FontWeight.Bold
-                        )
-                    }
+                    HorizontalDivider(color = CarbonBorder)
 
-                    // Complete Shutdown & Exit Button (Stops background & closes app)
-                    Button(
-                        onClick = onShutdownAndExitApp,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .testTag("sidebar_shutdown_exit_btn"),
-                        shape = RoundedCornerShape(8.dp),
-                        colors = ButtonDefaults.buttonColors(
-                            containerColor = CrimsonRed,
-                            contentColor = Color.White
-                        ),
-                        contentPadding = PaddingValues(vertical = 8.dp, horizontal = 10.dp)
+                    // Return / End Gaming Mode Controls
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        Icon(
-                            imageVector = Icons.Default.PowerSettingsNew,
-                            contentDescription = null,
-                            modifier = Modifier.size(16.dp)
-                        )
-                        Spacer(modifier = Modifier.width(6.dp))
-                        Text(
-                            text = "⏹️ إنهاء وإغلاق البرنامج بالكامل (إيقاف الخلفية)",
-                            style = MaterialTheme.typography.bodySmall,
-                            fontWeight = FontWeight.ExtraBold
-                        )
+                        OutlinedButton(
+                            onClick = onClose,
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .testTag("hud_return_to_app_btn"),
+                            shape = RoundedCornerShape(10.dp),
+                            border = BorderStroke(1.dp, CyberCyan)
+                        ) {
+                            Text(
+                                text = "الرجوع للتطبيق",
+                                style = MaterialTheme.typography.labelMedium,
+                                color = CyberCyan,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        Button(
+                            onClick = {
+                                onEndGamingSession()
+                                onClose()
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .height(42.dp)
+                                .testTag("hud_end_gaming_mode_btn"),
+                            shape = RoundedCornerShape(10.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CrimsonRed,
+                                contentColor = Color.White
+                            )
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.PowerSettingsNew,
+                                contentDescription = null,
+                                modifier = Modifier.size(16.dp)
+                            )
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text(
+                                text = if (!activeSessionGamePackage.isNullOrBlank()) "إنهاء الجلسة" else "إيقاف الوضع",
+                                style = MaterialTheme.typography.labelMedium,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
                     }
                 }
             }
@@ -670,71 +955,71 @@ fun EdgeSwipeGameGenieOverlay(
 }
 
 @Composable
-private fun FloatingMetricItem(
+private fun GenieStatBadge(
+    icon: ImageVector,
     label: String,
     value: String,
     color: Color
 ) {
     Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = color,
+            modifier = Modifier.size(16.dp)
+        )
         Text(
             text = value,
             fontFamily = OrbitronFontFamily,
+            fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            fontSize = 12.sp,
-            color = color
+            color = TitaniumWhite
         )
         Text(
             text = label,
-            fontFamily = OrbitronFontFamily,
-            fontSize = 9.sp,
-            color = SilverMist
+            style = MaterialTheme.typography.labelSmall,
+            color = SilverMist,
+            fontSize = 9.sp
         )
     }
 }
 
 @Composable
-private fun FloatingDockTile(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
-    title: String,
-    status: String,
+private fun GenieActionTile(
+    modifier: Modifier = Modifier,
+    icon: ImageVector,
+    label: String,
     active: Boolean,
-    accent: Color,
-    onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    activeColor: Color,
+    onClick: () -> Unit
 ) {
-    Surface(
-        modifier = modifier.clickable { onClick() },
-        shape = RoundedCornerShape(10.dp),
-        color = if (active) accent.copy(alpha = 0.18f) else GunmetalCard,
-        border = BorderStroke(1.dp, if (active) accent else CarbonBorder)
-    ) {
-        Row(
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-            verticalAlignment = Alignment.CenterVertically
-        ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = title,
-                tint = if (active) accent else SilverMist,
-                modifier = Modifier.size(18.dp)
+    Row(
+        modifier = modifier
+            .clip(RoundedCornerShape(12.dp))
+            .background(if (active) activeColor.copy(alpha = 0.16f) else GunmetalCard)
+            .border(
+                width = 1.dp,
+                color = if (active) activeColor else CarbonBorder,
+                shape = RoundedCornerShape(12.dp)
             )
-            Spacer(modifier = Modifier.width(8.dp))
-            Column {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = TitaniumWhite,
-                    fontWeight = FontWeight.Bold,
-                    fontSize = 11.sp
-                )
-                Text(
-                    text = status,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = if (active) accent else SilverMist,
-                    fontSize = 10.sp,
-                    maxLines = 1
-                )
-            }
-        }
+            .clickable { onClick() }
+            .padding(horizontal = 10.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Icon(
+            imageVector = icon,
+            contentDescription = label,
+            tint = if (active) activeColor else SilverMist,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = label,
+            style = MaterialTheme.typography.bodySmall,
+            color = if (active) TitaniumWhite else SilverMist,
+            fontWeight = if (active) FontWeight.Bold else FontWeight.Normal,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
     }
 }

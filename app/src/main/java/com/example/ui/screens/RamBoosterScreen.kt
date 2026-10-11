@@ -51,7 +51,14 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.example.model.BoostProcessItem
 import com.example.model.BoostResultReport
+import com.example.model.GameSpaceProfile
 import com.example.model.HardwareTelemetry
+import com.example.model.NetworkCheckReport
+import com.example.model.NetworkConnectionType
+import com.example.model.RouteOptimizationAssessment
+import com.example.ui.components.NetworkBoosterHeroCard
+import com.example.ui.components.NetworkTestHistoryCard
+import com.example.ui.components.RouteOptimizationDiagnosticCard
 import com.example.ui.theme.CarbonBorder
 import com.example.ui.theme.CrimsonRed
 import com.example.ui.theme.CyberCyan
@@ -71,9 +78,21 @@ fun RamBoosterScreen(
     processes: List<BoostProcessItem>,
     isBoosting: Boolean,
     lastBoostReport: BoostResultReport?,
+    latestNetworkReport: NetworkCheckReport? = null,
+    networkTestHistory: List<NetworkCheckReport> = emptyList(),
+    isCheckingNetwork: Boolean = false,
+    liveConnectionType: NetworkConnectionType = NetworkConnectionType.WIFI,
+    liveNetworkLabel: String = "واي فاي (Wi-Fi)",
+    games: List<GameSpaceProfile> = emptyList(),
+    selectedGameId: String = "",
+    routeAssessment: RouteOptimizationAssessment? = null,
     onExecuteDeepBoost: () -> Unit,
     onToggleProcessWhitelist: (String) -> Unit,
-    onTestNetworkPing: () -> Unit
+    onTestNetworkPing: () -> Unit,
+    onRunFullNetworkCheck: () -> Unit = onTestNetworkPing,
+    onClearNetworkHistory: () -> Unit = {},
+    onSelectRouteGame: (String) -> Unit = {},
+    onOpenHassanAiForNetwork: () -> Unit = {}
 ) {
     Column(
         modifier = Modifier
@@ -83,6 +102,34 @@ fun RamBoosterScreen(
             .testTag("ram_booster_screen"),
         verticalArrangement = Arrangement.spacedBy(14.dp)
     ) {
+        // 0. Network Booster — One-Tap Network Check, Ping, Jitter, Packet Loss & AI Network Advisor
+        NetworkBoosterHeroCard(
+            latestReport = latestNetworkReport,
+            isCheckingNetwork = isCheckingNetwork,
+            liveConnectionType = liveConnectionType,
+            liveNetworkLabel = liveNetworkLabel,
+            liveQuickPingMs = telemetry.pingMs,
+            onRunOneTapCheck = onRunFullNetworkCheck,
+            onAskAiAboutNetwork = onOpenHassanAiForNetwork
+        )
+
+        // 0.5 Advanced Route Optimization & Multi-Endpoint Probe Card
+        if (routeAssessment != null) {
+            RouteOptimizationDiagnosticCard(
+                games = games,
+                selectedGameId = selectedGameId,
+                routeAssessment = routeAssessment,
+                onSelectGame = onSelectRouteGame,
+                onRunRouteProbe = onRunFullNetworkCheck
+            )
+        }
+
+        // 0.8 Local Network Test History & Comparison Card
+        NetworkTestHistoryCard(
+            history = networkTestHistory,
+            onClearHistory = onClearNetworkHistory
+        )
+
         // 1. RAM & Cache Deep Booster Hero Card
         Surface(
             modifier = Modifier

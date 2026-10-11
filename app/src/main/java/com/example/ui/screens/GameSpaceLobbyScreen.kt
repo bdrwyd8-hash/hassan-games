@@ -107,7 +107,10 @@ fun GameSpaceLobbyScreen(
     onClearLastSessionRecord: () -> Unit,
     onToggleNotificationShield: (Boolean) -> Unit,
     onOpenDndPermissionSettings: () -> Unit,
-    onLoadAppIcon: (String) -> ImageBitmap?
+    onLoadAppIcon: (String) -> ImageBitmap?,
+    activeSessionGamePackage: String? = null,
+    onEndActiveSession: () -> Unit = {},
+    onOpenAiSetupForGame: (GameSpaceProfile) -> Unit = {}
 ) {
     val selectedGame = games.find { it.id == selectedGameId } ?: games.firstOrNull()
     var editingGameProfileId by remember { mutableStateOf<String?>(null) }
@@ -126,15 +129,22 @@ fun GameSpaceLobbyScreen(
             totalGamesCount = games.size,
             installedCount = games.count { it.isInstalled },
             selectedGame = selectedGame,
+            activeSessionGamePackage = activeSessionGamePackage,
             onOpenAddGamePicker = onOpenAddGamePicker,
             onStartSelectedGame = {
                 if (selectedGame != null) {
                     onLaunchGame(selectedGame)
                 }
             },
+            onEndActiveSession = onEndActiveSession,
             onOpenSelectedSettings = {
                 if (selectedGame != null) {
                     editingGameProfileId = selectedGame.id
+                }
+            },
+            onOpenSelectedAiSetup = {
+                if (selectedGame != null) {
+                    onOpenAiSetupForGame(selectedGame)
                 }
             },
             onLoadAppIcon = onLoadAppIcon
@@ -222,15 +232,21 @@ fun GameSpaceLobbyScreen(
                     MyGameCenterCard(
                         game = game,
                         isSelected = isSelected,
+                        isSessionActiveForGame = activeSessionGamePackage == game.packageName,
                         appIconBitmap = appIconBitmap,
                         onSelect = { onSelectGame(game.id) },
                         onStartGame = {
                             onSelectGame(game.id)
                             onLaunchGame(game)
                         },
+                        onEndSession = onEndActiveSession,
                         onOpenSettings = {
                             onSelectGame(game.id)
                             editingGameProfileId = game.id
+                        },
+                        onOpenAiSetup = {
+                            onSelectGame(game.id)
+                            onOpenAiSetupForGame(game)
                         },
                         onSelectPerformanceMode = { mode ->
                             onUpdateGameProfile(game.id) { profile ->
@@ -329,15 +345,19 @@ private fun UniversalMyGamesHeroHeader(
     totalGamesCount: Int,
     installedCount: Int,
     selectedGame: GameSpaceProfile?,
+    activeSessionGamePackage: String? = null,
     onOpenAddGamePicker: () -> Unit,
     onStartSelectedGame: () -> Unit,
+    onEndActiveSession: () -> Unit = {},
     onOpenSelectedSettings: () -> Unit,
+    onOpenSelectedAiSetup: () -> Unit = {},
     onLoadAppIcon: (String) -> ImageBitmap?
 ) {
     val accent = selectedGame?.let { Color(it.accentHex) } ?: CrimsonRed
     val selectedIcon = remember(selectedGame?.packageName, selectedGame?.isInstalled) {
         selectedGame?.let { onLoadAppIcon(it.packageName) }
     }
+    val isSessionActive = !activeSessionGamePackage.isNullOrBlank()
 
     Surface(
         modifier = Modifier
@@ -398,6 +418,56 @@ private fun UniversalMyGamesHeroHeader(
                     }
                 }
 
+                if (isSessionActive) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .testTag("active_gaming_session_banner"),
+                        shape = RoundedCornerShape(10.dp),
+                        color = MatrixGreen.copy(alpha = 0.14f),
+                        border = BorderStroke(1.dp, MatrixGreen.copy(alpha = 0.6f))
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text(
+                                    text = "GAMING SESSION ACTIVE • جلسة اللعب نشطة الآن",
+                                    fontFamily = OrbitronFontFamily,
+                                    fontSize = 10.sp,
+                                    color = MatrixGreen,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "الحزمة النشطة: $activeSessionGamePackage",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = TitaniumWhite,
+                                    fontSize = 10.sp
+                                )
+                            }
+                            OutlinedButton(
+                                onClick = onEndActiveSession,
+                                modifier = Modifier
+                                    .height(34.dp)
+                                    .testTag("hero_end_session_btn"),
+                                shape = RoundedCornerShape(8.dp),
+                                border = BorderStroke(1.dp, CrimsonRed)
+                            ) {
+                                Text(
+                                    text = "إنهاء الجلسة",
+                                    style = MaterialTheme.typography.labelSmall,
+                                    color = CrimsonRed,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+                }
+
                 if (selectedGame != null) {
                     Row(
                         modifier = Modifier
@@ -432,7 +502,7 @@ private fun UniversalMyGamesHeroHeader(
                                 Box(
                                     modifier = Modifier
                                         .clip(RoundedCornerShape(4.dp))
-                                        .background( selectedGame.recommendedMode.primaryColor.copy(alpha = 0.2f))
+                                        .background(selectedGame.recommendedMode.primaryColor.copy(alpha = 0.2f))
                                         .border(
                                             1.dp,
                                             selectedGame.recommendedMode.primaryColor,
@@ -450,7 +520,7 @@ private fun UniversalMyGamesHeroHeader(
                                 }
                             }
                             Text(
-                                text = "${selectedGame.genreAr} • ${if (selectedGame.isInstalled) "مثبتة وجاهزة للتشغيل الفوري" else "ملف إعدادات مخصص (${selectedGame.packageName})"}",
+                                text = "${selectedGame.genreAr} • ${if (selectedGame.isInstalled) "تشغيل مباشر مدعوم + فحص الشبكة والـ HUD" else "بروفايل إعدادات + فحص الشبكة (غير مثبتة حاليًا)"}",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = if (selectedGame.isInstalled) MatrixGreen else SilverMist,
                                 fontSize = 11.sp,
@@ -467,7 +537,7 @@ private fun UniversalMyGamesHeroHeader(
                         Button(
                             onClick = onStartSelectedGame,
                             modifier = Modifier
-                                .weight(1.4f)
+                                .weight(1.35f)
                                 .height(46.dp)
                                 .testTag("hero_start_selected_game_btn"),
                             shape = CutCornerShape(10.dp),
@@ -483,7 +553,7 @@ private fun UniversalMyGamesHeroHeader(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = "START • بدء اللعبة الآن",
+                                text = "START • بدء اللعبة",
                                 style = MaterialTheme.typography.labelLarge,
                                 fontWeight = FontWeight.ExtraBold
                             )
@@ -492,7 +562,7 @@ private fun UniversalMyGamesHeroHeader(
                         OutlinedButton(
                             onClick = onOpenSelectedSettings,
                             modifier = Modifier
-                                .weight(1f)
+                                .weight(0.95f)
                                 .height(46.dp)
                                 .testTag("hero_settings_selected_game_btn"),
                             shape = CutCornerShape(10.dp),
@@ -504,11 +574,29 @@ private fun UniversalMyGamesHeroHeader(
                                 tint = CyberCyan,
                                 modifier = Modifier.size(18.dp)
                             )
-                            Spacer(modifier = Modifier.width(6.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
                             Text(
-                                text = "إعدادات اللعبة",
+                                text = "الإعدادات",
                                 style = MaterialTheme.typography.labelMedium,
                                 color = CyberCyan,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+
+                        OutlinedButton(
+                            onClick = onOpenSelectedAiSetup,
+                            modifier = Modifier
+                                .weight(0.75f)
+                                .height(46.dp)
+                                .testTag("hero_ai_setup_selected_game_btn"),
+                            shape = CutCornerShape(10.dp),
+                            border = BorderStroke(1.2.dp, MoltenAmber)
+                        ) {
+                            Text(
+                                text = "AI Setup",
+                                fontFamily = OrbitronFontFamily,
+                                fontSize = 10.sp,
+                                color = MoltenAmber,
                                 fontWeight = FontWeight.Bold
                             )
                         }
@@ -524,10 +612,13 @@ private fun UniversalMyGamesHeroHeader(
 private fun MyGameCenterCard(
     game: GameSpaceProfile,
     isSelected: Boolean,
+    isSessionActiveForGame: Boolean = false,
     appIconBitmap: ImageBitmap?,
     onSelect: () -> Unit,
     onStartGame: () -> Unit,
+    onEndSession: () -> Unit = {},
     onOpenSettings: () -> Unit,
+    onOpenAiSetup: () -> Unit = {},
     onSelectPerformanceMode: (PerformanceMode) -> Unit,
     onRemoveGame: () -> Unit
 ) {
@@ -594,6 +685,20 @@ private fun MyGameCenterCard(
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis
                     )
+
+                    Row(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.padding(top = 4.dp)
+                    ) {
+                        MiniFeatureChip(
+                            label = if (game.isInstalled) "تشغيل مباشر مدعوم" else "بروفايل إعدادات فقط",
+                            color = if (game.isInstalled) MatrixGreen else MoltenAmber
+                        )
+                        MiniFeatureChip(
+                            label = "فحص الشبكة + HUD",
+                            color = CyberCyan
+                        )
+                    }
                 }
 
                 IconButton(
@@ -690,7 +795,7 @@ private fun MyGameCenterCard(
                 }
             }
 
-            // Action Buttons: START + SETTINGS
+            // Action Buttons: START / END + SETTINGS + AI
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -698,7 +803,7 @@ private fun MyGameCenterCard(
                 Button(
                     onClick = onStartGame,
                     modifier = Modifier
-                        .weight(1.45f)
+                        .weight(1.35f)
                         .height(44.dp)
                         .testTag("start_game_btn_${game.id}"),
                     shape = CutCornerShape(10.dp),
@@ -714,16 +819,35 @@ private fun MyGameCenterCard(
                     )
                     Spacer(modifier = Modifier.width(6.dp))
                     Text(
-                        text = if (game.isInstalled) "START • تشغيل اللعبة" else "START • تجهيز وتشغيل",
+                        text = if (game.isInstalled) "START • تشغيل" else "START • تجهيز",
                         style = MaterialTheme.typography.labelLarge,
                         fontWeight = FontWeight.ExtraBold
                     )
                 }
 
+                if (isSessionActiveForGame) {
+                    OutlinedButton(
+                        onClick = onEndSession,
+                        modifier = Modifier
+                            .weight(0.85f)
+                            .height(44.dp)
+                            .testTag("end_session_game_btn_${game.id}"),
+                        shape = CutCornerShape(10.dp),
+                        border = BorderStroke(1.dp, CrimsonRed)
+                    ) {
+                        Text(
+                            text = "إنهاء الجلسة",
+                            style = MaterialTheme.typography.labelMedium,
+                            color = CrimsonRed,
+                            fontWeight = FontWeight.Bold
+                        )
+                    }
+                }
+
                 OutlinedButton(
                     onClick = onOpenSettings,
                     modifier = Modifier
-                        .weight(1f)
+                        .weight(0.95f)
                         .height(44.dp)
                         .testTag("settings_game_btn_${game.id}"),
                     shape = CutCornerShape(10.dp),
@@ -735,11 +859,29 @@ private fun MyGameCenterCard(
                         tint = CyberCyan,
                         modifier = Modifier.size(16.dp)
                     )
-                    Spacer(modifier = Modifier.width(6.dp))
+                    Spacer(modifier = Modifier.width(4.dp))
                     Text(
-                        text = "PROFILE • الإعدادات",
+                        text = "الإعدادات",
                         style = MaterialTheme.typography.labelMedium,
                         color = CyberCyan,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onOpenAiSetup,
+                    modifier = Modifier
+                        .weight(0.65f)
+                        .height(44.dp)
+                        .testTag("ai_setup_game_btn_${game.id}"),
+                    shape = CutCornerShape(10.dp),
+                    border = BorderStroke(1.dp, MoltenAmber.copy(alpha = 0.85f))
+                ) {
+                    Text(
+                        text = "AI",
+                        fontFamily = OrbitronFontFamily,
+                        fontSize = 11.sp,
+                        color = MoltenAmber,
                         fontWeight = FontWeight.Bold
                     )
                 }

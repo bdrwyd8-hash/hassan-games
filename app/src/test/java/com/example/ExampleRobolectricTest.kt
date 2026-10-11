@@ -10,19 +10,25 @@ import androidx.test.core.app.ApplicationProvider
 import org.junit.Rule
 import org.robolectric.shadows.ShadowSettings
 import com.example.data.HardwareTelemetryEngine
+import com.example.data.HassanAiEngine
+import com.example.data.NetworkBoosterEngine
 import com.example.data.RedCorePreferencesRepository
 import com.example.data.SystemBoosterManager
 import com.example.model.AdvisorPresetMode
 import com.example.model.ClonedButtonMode
 import com.example.model.CrosshairStyle
 import com.example.model.HardwareTelemetry
+import com.example.model.HudShortcutTool
 import com.example.model.InstalledAppCandidate
+import com.example.model.NetworkConnectionType
+import com.example.model.NetworkStabilityGrade
 import com.example.model.PerformanceMode
 import com.example.model.SmartThermalMode
 import com.example.model.ThermalStateLevel
 import com.example.service.TriggerEventBus
 import com.example.viewmodel.RedCoreTab
 import com.example.viewmodel.RedCoreViewModel
+import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
@@ -331,6 +337,169 @@ class ExampleRobolectricTest {
         composeTestRule.onNodeWithTag("crosshair_master_switch").performScrollTo().performClick()
         composeTestRule.onNodeWithTag("apply_advisor_recommendations_button").performScrollTo().performClick()
         composeTestRule.onNodeWithTag("custom_app_icon_studio_card").performScrollTo().assertIsDisplayed()
+        composeTestRule.waitForIdle()
+    }
+
+    @Test
+    fun networkBooster_connectedOfflineAndUnstableScenarios_andHistoryPersistence() = runBlocking {
+        val netEngine = NetworkBoosterEngine(app)
+
+        // 1. Offline scenario
+        netEngine.testConnectionTypeOverride = NetworkConnectionType.OFFLINE
+        val offlineReport = netEngine.executeOneTapNetworkCheck(previousReports = emptyList())
+        assertEquals(NetworkStabilityGrade.OFFLINE, offlineReport.stabilityGrade)
+        assertEquals(null, offlineReport.avgPingMs)
+        assertTrue(offlineReport.detectedIssuesAr.isNotEmpty())
+        assertTrue(offlineReport.smartRecommendationsAr.isNotEmpty())
+
+        // 2. Stable Wi-Fi scenario
+        netEngine.testConnectionTypeOverride = NetworkConnectionType.WIFI
+        netEngine.testOverrideSimulator = { target ->
+            when (target.host) {
+                "1.1.1.1" -> listOf(22, 24, 23, 25, 23)
+                "8.8.8.8" -> listOf(28, 30, 29)
+                else -> listOf(34, 35, 36)
+            }
+        }
+        val stableReport = netEngine.executeOneTapNetworkCheck(previousReports = emptyList())
+        assertEquals(NetworkStabilityGrade.EXCELLENT, stableReport.stabilityGrade)
+        assertEquals(0, stableReport.packetLossPercent)
+        assertNotNull(stableReport.avgPingMs)
+        assertTrue(stableReport.avgPingMs!! < 35)
+
+        // 3. Unstable / High Jitter / Packet Loss Cellular scenario
+        netEngine.testConnectionTypeOverride = NetworkConnectionType.CELLULAR
+        netEngine.testOverrideSimulator = { target ->
+            when (target.host) {
+                "1.1.1.1" -> listOf(45, 165, null, 190, 60)
+                "8.8.8.8" -> listOf(60, 180, null)
+                else -> listOf(75, null, 220)
+            }
+        }
+        val unstableReport = netEngine.executeOneTapNetworkCheck(previousReports = listOf(stableReport))
+        assertTrue((unstableReport.packetLossPercent ?: 0) > 0)
+        assertTrue((unstableReport.jitterMs ?: 0) > 20)
+        assertTrue(unstableReport.spikeDetected)
+        assertTrue(unstableReport.smartRecommendationsAr.isNotEmpty())
+
+        // 4. Route Optimization diagnostic check
+        val routeReport = netEngine.evaluateRouteOptimizationForGame(
+            gameTitle = "Call of Duty Mobile",
+            gamePackage = "com.activision.callofduty.shooter",
+            isInstalled = true,
+            latestReport = stableReport
+        )
+        assertFalse(routeReport.vpnRelayBackendAvailable)
+        assertTrue(routeReport.testedEndpoints.isNotEmpty())
+        assertTrue(routeReport.architecturalNoteAr.isNotBlank())
+
+        // 5. Persist and clear test history
+        prefsRepo.saveNetworkTestHistory(listOf(unstableReport, stableReport))
+        val loadedHistory = prefsRepo.loadNetworkTestHistory()
+        assertEquals(2, loadedHistory.size)
+        assertEquals(unstableReport.id, loadedHistory.first().id)
+
+        prefsRepo.clearNetworkTestHistory()
+        assertTrue(prefsRepo.loadNetworkTestHistory().isEmpty())
+    }
+
+    @Test
+    fun smartGamingHud_openCustomizeAndEndSession_recordsSessionReport() {
+        val viewModel = RedCoreViewModel(app)
+        val game = viewModel.gameSpaceCatalog.value.first()
+
+        // Start game session
+        viewModel.applyProfileWithoutLaunching(game)
+        assertEquals(game.packageName, viewModel.activeSessionGamePackage.value)
+
+        // Toggle HUD tool visibility and verify persistence
+        val initialTools = viewModel.visibleHudTools.value
+        assertTrue(initialTools.contains(HudShortcutTool.CROSSHAIR))
+        viewModel.toggleHudToolVisibility(HudShortcutTool.CROSSHAIR)
+        assertFalse(viewModel.visibleHudTools.value.contains(HudShortcutTool.CROSSHAIR))
+        viewModel.toggleHudToolVisibility(HudShortcutTool.CROSSHAIR)
+        assertTrue(viewModel.visibleHudTools.value.contains(HudShortcutTool.CROSSHAIR))
+
+        // End active session and verify Smart Gaming Session Report is generated and saved
+        viewModel.endActiveGamingSession()
+        assertEquals(null, viewModel.activeSessionGamePackage.value)
+        val reports = viewModel.sessionReports.value
+        assertTrue("Ending an active session must record a GamingSessionReport", reports.isNotEmpty())
+        assertEquals(game.title, reports.first().gameTitle)
+        assertTrue(reports.first().measuredFactsAr.isNotEmpty())
+        assertTrue(reports.first().aiNextSessionRecommendationsAr.isNotEmpty())
+
+        // Clear session reports
+        viewModel.clearSessionReportsHistory()
+        assertTrue(viewModel.sessionReports.value.isEmpty())
+    }
+
+    @Test
+    fun hassanAiAssistant_uiAndLocalKnowledgeFallback_answersAndExecutesQuickActions() = runBlocking {
+        val aiEngine = HassanAiEngine()
+        val viewModel = RedCoreViewModel(app)
+        val sampleGame = viewModel.gameSpaceCatalog.value.first()
+
+        val liveContext = HassanAiEngine.LiveAppContext(
+            telemetry = HardwareTelemetry(
+                batteryTempCelsius = 42.8f,
+                ramUsagePercent = 82,
+                pingMs = 95,
+                batteryPercent = 64
+            ),
+            performanceMode = PerformanceMode.PERFORMANCE,
+            thermalStatus = telemetryEngine.evaluateSmartThermalStatus(
+                HardwareTelemetry(batteryTempCelsius = 42.8f),
+                SmartThermalMode.AUTO_ADAPTIVE
+            ),
+            latestNetworkReport = null,
+            overlayPermissionGranted = false,
+            accessibilityEnabled = false,
+            dndPermissionGranted = false,
+            floatingHudRunning = false,
+            crosshairEnabled = true,
+            clonedButtonsEnabled = false,
+            myGames = viewModel.gameSpaceCatalog.value,
+            selectedGame = sampleGame,
+            latestSessionReport = null
+        )
+
+        // 1. Test AI response for Gaming Tools question (works even without Gemini API key / network)
+        val toolsAnswer = aiEngine.askHassanAi("لماذا هذه الأداة لا تعمل؟", liveContext)
+        assertFalse(toolsAnswer.senderIsUser)
+        assertTrue(toolsAnswer.text.contains("Overlay") || toolsAnswer.text.contains("صلاحية"))
+        assertTrue(toolsAnswer.suggestedActions.isNotEmpty())
+
+        // 2. Test AI response for English question
+        val englishAnswer = aiEngine.askHassanAi("How do I add a game to MY GAMES?", liveContext)
+        assertFalse(englishAnswer.senderIsUser)
+        assertTrue(englishAnswer.text.contains("MY GAMES") || englishAnswer.text.contains("ADD GAME"))
+
+        // 3. Test AI simulated cloud API failure fallback
+        aiEngine.forceSimulateApiFailureForTesting = true
+        val fallbackAnswer = aiEngine.askHassanAi("اشرح لي Hassan Games", liveContext)
+        assertTrue(fallbackAnswer.isOfflineOrFallback)
+        assertTrue(fallbackAnswer.text.contains("Hassan Games"))
+        aiEngine.forceSimulateApiFailureForTesting = false
+
+        // 4. Test Smart Game Setup generation & application
+        viewModel.generateAiSmartGameSetup(sampleGame)
+        val advice = viewModel.currentAiGameAdvice.value
+        assertNotNull(advice)
+        assertEquals(sampleGame.title, advice!!.gameTitle)
+        viewModel.applyAiSmartGameSetup(advice)
+
+        // 5. Test UI navigation to Network Booster and Hassan AI tabs
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("nav_tab_RAM_BOOSTER").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("network_booster_hero_card").assertIsDisplayed()
+
+        composeTestRule.onNodeWithTag("nav_tab_HASSAN_AI").performClick()
+        composeTestRule.waitForIdle()
+        composeTestRule.onNodeWithTag("hassan_ai_screen").assertIsDisplayed()
+        composeTestRule.onNodeWithTag("ai_run_network_advisor_btn").performScrollTo().performClick()
+        composeTestRule.onNodeWithTag("ai_run_performance_advisor_btn").performScrollTo().performClick()
         composeTestRule.waitForIdle()
     }
 }
